@@ -71,7 +71,8 @@ Use Python 3.10+ and the system's IANA timezone database; no third-party package
 
 ```sh
 python3 code/simulator/generate_orders.py \
-  --start 2026-01-01 --end 2026-01-01 --output data/orders_simple_sample.json
+  --start 2026-01-01 --end 2026-08-31 --seed 42 --orders-per-hour 20 \
+  --output data/orders_2026_jan_aug.json
 PYTHONPATH=code python3 -m unittest discover -s tests -v
 ```
 
@@ -87,8 +88,13 @@ The same seed, order ID, timestamp, and controls reproduce the same row.
 Batch IDs are unique within a batch, not across separate batches; pass your own
 unique `order_id` for individual calls. Independent calls carry no prior state.
 
-The old `orders_2026_jan_aug.json` and `orders_sample.json` files belong to earlier
-generator versions and are left untouched. Regenerate explicitly when ready.
+The current local dataset is `data/orders_2026_jan_aug.json`: **116,667 orders,
+31 columns**, covering all 243 days from January 1 through August 31, 2026.
+It contains 113,079 delivered and 3,588 cancelled orders, with no train/test split.
+The command above reproduces this default-seed dataset. Holiday/event calendars
+were not supplied, so holiday flags are false and holiday/event names are missing.
+The three older dataset/sample files were moved to Trash; only this dataset
+remains in `data/`. The data itself is not committed to Git.
 
 ## Prediction contract
 
