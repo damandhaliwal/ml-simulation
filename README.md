@@ -3,73 +3,149 @@
 A learning-first project for predicting food-delivery duration and following
 predictions through actual outcomes and the model's operational lifecycle.
 
-**Status:** The order-input generator covers January-August 2026. Delivery dynamics,
-batching, trained models, APIs, and deployment are not implemented yet. All
-marketplace data is simulated; results describe the simulation, not real deliveries.
+**Status:** A configurable, stateful simulator generates all 37 agreed order
+columns, preparation/delivery events, cancellations, and nearby multi-order runs.
+No models, train/test split, prediction API, or deployment exists yet.
+Everything is synthetic; these are not measurements of Toronto deliveries.
 
 ## Run this step
 
-Use Python 3.10 or later and the system's IANA timezone database. No Python
-packages need to be installed on this Mac. Run from the repository root:
+Use Python 3.10+ and the system's IANA timezone database. No additional Python
+packages are required. Run from the repository root:
 
 ```sh
-python3 code/simulator/generate_orders.py
+python3 code/simulator/generate_orders.py \
+  --start 2026-01-01 --end 2026-01-01 --output data/orders_sample.json
 PYTHONPATH=code python3 -m unittest discover -s tests -v
 ```
 
-The first command generates **116,606 orders** with the default seed and saves
-them to `data/orders_2026_jan_aug.json`. Each has an order ID, a UTC confirmation
-timestamp, pickup/drop-off zones, and a distance. Rerunning the command replaces
-that generated file. `data/` is ignored by Git; commit the generator, not the data.
-The dataset is one unsplit file: no train, validation, or test partition is assigned.
+Dates and the output path are required. For January–August, change `--end` to
+`2026-08-31`. Dates are inclusive in Toronto's local calendar; confirmation
+timestamps are UTC. Labels reflect events observed by midnight after the last
+local date. Orders still active then keep missing delivery labels.
+The CLI replaces the requested output file. Generated data stays out of Git.
 
-The second command runs the focused tests. `PYTHONPATH=code` tells Python where
-our source packages live, without installing anything or changing global settings.
+The existing `data/orders_2026_jan_aug.json` is the older five-field dataset;
+it is not automatically overwritten by this step.
 
-Current layout:
+## Function calls
 
-```text
-code/
-    simulator/
-        __init__.py
-        generate_orders.py
-tests/
-    test_simulator.py
-docs/
-    order-schema.md
-data/                   # Generated locally; not committed
-    orders_2026_jan_aug.json
+All simulator functions live in `code/simulator/generate_orders.py`.
+For Python examples, launch Python with `PYTHONPATH=code python3`.
+
+```python
+from datetime import date, datetime, timedelta, timezone
+from simulator.generate_orders import (
+    create_market, generate_order, generate_orders, advance_market,
+)
+
+market = create_market(
+    seed=42,
+    couriers_per_zone=3,
+    restaurants_per_zone=5,
+    max_orders_per_run=2,
+    batch_max_gap_km=1.0,
+    cancellation_probability=0.03,
+    promise_minutes=45,
+    holidays={date(2026, 1, 2): "Simulated holiday"},
+    special_events={date(2026, 1, 3): "festival"},
+)
+
+orders = generate_orders(
+    date(2026, 1, 1), date(2026, 1, 1),
+    market=market,
+    orders_per_hour=20,
+    traffic_index=1.8,
+    weather_type="rain",
+    temperature_c=4,
+    precipitation_mm_per_hour=8,
+    prep_time_multiplier=1.2,
+)
 ```
 
-`code/` is a source folder, not a Python package. `simulator/` is the package;
-its `__init__.py` only marks that boundary. Add other component folders when
-they have actual code, not before.
+This example applies the rain/traffic scenario to one day. Change the end date
+to August 31 for a longer cohort after inspecting a small run. Sustained demand
+above courier capacity creates growing queues, so long stress runs can be slow.
+For varying scenarios, call the single-order function at increasing timestamps
+and change its keyword arguments. For example, in a **fresh** market:
 
-`generate_orders(start_date, end_date, seed=42)` accepts Python `date` values.
-The defaults are January 1 through August 31, 2026, both inclusive in Toronto's
-local calendar. The generator stops at September 1 midnight, exclusive.
+```python
+market = create_market(seed=42)
+now = datetime.now(timezone.utc)   # The caller chooses historical or current time.
 
-Generation rules:
+snapshot = generate_order(
+    now, market, traffic_index=1.8, weather_type="rain", item_count=6,
+)
+assert snapshot["delivery_duration_minutes"] is None
 
-- A local random-number generator makes repeated calls with the same arguments
-  reproducible without changing Python's global random state.
-- Convert the local start and end boundaries to UTC, then advance by independently
-  sampled integer gaps of 1-5 minutes until the end boundary. This correctly
-  handles the March daylight-saving change. Late-August local orders can have
-  September 1 UTC timestamps while still being inside the requested window.
-- Arrivals run around the clock with the same gap distribution throughout the
-  window. There are no peak-hour, weekday, or seasonal demand effects yet.
-- Pick each pickup and drop-off zone independently and uniformly from `Z1`-`Z3`.
-- Sample distance uniformly from 0.3-2 km for same-zone orders and 1-5 km for
-  cross-zone orders, rounded to two decimals. The ranges overlap deliberately:
-  cross-zone orders tend to be longer but need not always be longer.
-- IDs start at `O000001` in each batch. They are unique within the batch, not across
-  repeated calls; this generator is not an append-only order stream yet.
+advance_market(market, now + timedelta(hours=2))
+observed_order = market["orders"][snapshot["order_id"]].copy()
+```
 
-These are toy simulation assumptions, not estimates of Toronto activity.
-The output is only a subset of the agreed schema: restaurant
-and customer identities, calendar/weather/traffic fields, courier state, promises,
-and outcomes will be added in separate steps. No batching rule is implemented yet.
+Advancing time is instant simulated-time processing, not sleeping or calling an
+API. `snapshot` remains unchanged even after delivery. Outcomes are read from the
+market after advancing. Do not pass the internal market/event queue to a model:
+it also holds future simulation events.
+
+To create a same-customer add-on, pass `order_group_id=snapshot["order_group_id"]`
+to a subsequent `generate_order` call. It selects another restaurant and retains
+the customer/destination. Customer grouping does not guarantee a shared courier.
+
+### Controls and defaults
+
+| Where | Controls |
+| --- | --- |
+| `create_market` | Seed; zone labels; restaurants/customers/couriers per zone (5/100/3); maximum orders per run (2); proximity cutoff (1 km); cancellation-attempt probability (0.03); promise length (45 minutes); holiday/event calendars. |
+| `generate_orders` | Required start/end dates; arrival rate (20 orders/hour); an optional existing market; the same order keyword arguments shown below. Without a market it creates one using `seed`. An existing market keeps its own seed/state. |
+| `generate_order` | Required aware timestamp and market; traffic, weather, temperature, precipitation, holiday/event name, preparation multiplier (1), optional item count and existing customer group. |
+| `advance_market` | Market and inclusive observation cutoff. Processes only events due by that time. |
+
+- Omitted traffic/weather controls use shared, synthetic hourly conditions.
+  Explicit overrides apply from this confirmation until the next generation
+  call; omitting them on that next call restores automatic conditions.
+- Supply `weather_type` when overriding temperature or precipitation. Contradictory
+  combinations fail explicitly. Preparation multiplier applies to the new order.
+- Calendar/event labels alone do **not** multiply traffic or demand. Override those
+  separately. Calendars default to empty; none is claimed to be an official
+  Canadian holiday calendar. Use a calendar for a multi-day long-weekend scenario;
+  `holiday_name` only overrides the individual order's date.
+- Arrival rate controls frequency, not an individual order. Backlog and idle/busy
+  counts come from shared activity, never independent random draws.
+- Reuse the market to retain IDs, queues, and couriers; time cannot go backward.
+  IDs are unique within a market, not across separately created markets.
+  Date-window calls restart their arrival clock at each window boundary, so
+  chunking a batch is not identical to one uninterrupted arrival stream.
+
+### Reading the implementation
+
+Start with these four functions:
+
+1. `create_market` builds the world and its policy settings.
+2. `generate_order` advances to confirmation, freezes inputs, then starts work.
+3. `advance_market` processes preparation, cancellation, arrival, and stop events.
+4. `generate_orders` repeatedly calls the single-order function for a date window.
+
+The helpers each support one responsibility:
+
+| Helpers | Purpose |
+| --- | --- |
+| `_number`, `_utc` | Validate numeric controls and normalize aware timestamps to UTC. |
+| `_conditions`, `_calendar` | Build current environmental and local calendar fields. |
+| `_schedule` | Put an event on the time-ordered queue, breaking ties by insertion order. |
+| `_start_prep` | Start the next active order when a restaurant's preparation slot is free. |
+| `_gap` | Sample once and retain a symmetric pickup or drop-off proximity value. |
+| `_record_plan` | Preserve a timestamped stop-plan revision after adding/removing an order. |
+| `_dispatch` | Assign waiting orders to an eligible batch or an idle courier. |
+| `_travel_next`, `_service_stop` | Schedule travel and one minute of stop handling. |
+| `_cancel` | Cancel only before pickup, release preparation/assignment, and preserve observed milestones. |
+
+See the [order schema](docs/order-schema.md#current-simulator-rules) for formulas,
+assumptions, and limitations. Runs and assignments stay separately in
+`market["runs"]` and `market["assignments"]`; the returned list/CLI JSON contains
+order rows only. The market is in-memory, not a restartable database or live service.
+
+Source stays under `code/simulator/`, tests under `tests/`, and design notes under
+`docs/`. `code/` is not a package; `PYTHONPATH=code` exposes the simulator package.
 
 ## Product spec
 
@@ -89,8 +165,8 @@ restaurant activity, or any platform's proprietary system.
 Use synthetic zone labels and randomly generated distances, with shorter trips
 more common within a zone. No coordinates, map sketches, or route optimization
 are required. Only batch additional orders whose pickups and drop-offs are near
-the first order's stops. Account for extra travel and stop time; the numeric
-proximity cutoff remains to be chosen. This is an approximation of routing.
+the first order's stops. Account for extra travel and stop time; the default
+proximity cutoff is 1 km at both ends. This is an approximation of routing.
 
 The design includes weather, traffic, local time and weekday, holidays and special
 events, promised deadlines, cancellations, and multi-order courier runs. Related
@@ -123,7 +199,8 @@ of -3 minutes. If the promised deadline was 18:40, the delivery was not late.
 
 Record `promised_delivery_at` at confirmation and preserve that original promise.
 For delivered orders, define `late_delivery` as delivery after that deadline.
-The promise-setting policy and severe-lateness threshold are still undecided.
+The current promise is a configurable 45 minutes. A severe-lateness threshold
+has not been selected.
 A point ETA alone does not provide a late-delivery probability.
 
 ### How we will evaluate it
@@ -159,11 +236,10 @@ with rollback available. The staged roadmap is in [AGENTS.md](AGENTS.md).
 Not now: cloud infrastructure, dashboards, automatic retraining, sophisticated
 dispatch optimization, courier incentives, or causal experiments. Simple courier
 assignment and batching rules are part of the simulator design. No full
-architecture scaffolding and no large dataset generation at this stage.
+architecture scaffolding.
 
 ### Next decision
 
-Review the date-window generator and its output, then choose the next small
-schema addition. Leave train/test splitting for later. Add marketplace state and
-mechanisms in separate steps; do not invent placeholder outcomes or independently
-randomize shared queues and courier counts. Further implementation requires approval.
+Review one order's confirmation snapshot and event history, then compare a small
+normal scenario with a high-traffic or low-supply scenario. Leave train/test
+splitting and modeling for later. Further implementation requires approval.
