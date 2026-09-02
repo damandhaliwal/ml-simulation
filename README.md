@@ -22,6 +22,12 @@ multiple pickup/drop-off zones, and deliveries that can cross zone boundaries.
 This is a fictional market, not a reconstruction of Toronto's streets, actual
 restaurant activity, or any platform's proprietary system.
 
+Use synthetic zone labels and randomly generated distances, with shorter trips
+more common within a zone. No coordinates, map sketches, or route optimization
+are required. Only batch additional orders whose pickups and drop-offs are near
+the first order's stops. Account for extra travel and stop time; the numeric
+proximity cutoff remains to be chosen. This is an approximation of routing.
+
 The design includes weather, traffic, local time and weekday, holidays and special
 events, promised deadlines, cancellations, and multi-order courier runs. Related
 orders from one customer and orders sharing a courier run are separate concepts.
@@ -93,7 +99,8 @@ architecture scaffolding and no large dataset generation at this stage.
 
 ### Next decision
 
-Choose the first simulator increment: the zone layout, restaurant locations,
-and a simple distance rule. Order volumes, traffic/weather dynamics, dispatch,
-cancellation, batching, and promise-setting policies still need explicit choices.
+Propose a tiny, seeded generator for order IDs, confirmation times, zone labels,
+and sampled distances. State its sample size and generation rules before coding.
+Add marketplace state and later mechanisms in separate steps; do not invent
+placeholder outcomes or independently randomize shared queues and courier counts.
 No implementation begins until that step is approved.

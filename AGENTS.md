@@ -15,6 +15,9 @@ The agreed scope is a synthetic Toronto-inspired downtown market with multiple
 zones, weather, traffic, calendar effects, promised deadlines, cancellations,
 and multi-order deliveries. See `README.md` and `docs/order-schema.md` for the
 current design. Implement this scope gradually; do not silently remove it.
+Use synthetic zone labels and sampled distances, not maps or detailed routing.
+Additional batched orders must stay near the first order's pickup and drop-off;
+keep the exact proximity cutoff explicit when implementing that rule.
 
 ## Working agreement: one small step at a time
 

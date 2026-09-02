@@ -10,10 +10,12 @@ classes, or a database at this stage.
   and orders spread across multiple zones. Cross-zone deliveries are supported.
 - Zones share a city context but can have different demand, courier supply,
   traffic, weather, and event exposure. They are not isolated simulations.
-- Use synthetic identifiers and locations, not real customers or restaurant data.
+- Use synthetic identifiers and zone labels, not real customers or restaurant data.
+  No coordinate system, map sketch, street network, or shortest-path calculation
+  is required for this simulation.
 - Store timezone-aware timestamps in UTC. Derive local calendar features using
   `America/Toronto`, including daylight-saving changes.
-- The zone count, layout, physical extent, restaurant count, and order volume
+- The zone labels/count, restaurant count, order volume, and distance distributions
   are intentionally not chosen yet. Geographic scope does not set simulation size.
 
 ## What one row means
@@ -51,13 +53,14 @@ features. The first ETA model does not need customer identity as a predictor.
 | `service_area_id` | String | The synthetic downtown market. |
 | `pickup_zone_id` | String | Zone containing the restaurant. |
 | `dropoff_zone_id` | String | Zone containing the customer destination. |
-| `distance_km` | Positive number | Simulated restaurant-to-customer route distance, before any batching detours. |
+| `distance_km` | Positive number | Sampled restaurant-to-customer travel distance, before any batching detours; not a measured map route. |
 | `confirmed_at` | Timestamp | Prediction time and the start of delivery duration. |
 | `promised_delivery_at` | Timestamp | Original deadline communicated at confirmation; must be after confirmation. |
 
-Pickup and destination locations must be retained for routing, either directly
-or through location records. Their coordinate representation and distance rule
-will be agreed with the zone layout, not invented during schema implementation.
+Keep restaurant and customer identities and their zone labels consistent across
+records. Sample positive travel distances, with shorter distances more common
+within a zone than across zones. Numerical distributions will be specified with
+the first generator. These values approximate travel, not a geometric street map.
 
 ## Confirmation-time context
 
@@ -146,10 +149,34 @@ Run assignments need `order_id`, `run_id`, `assigned_at`, and an optional remova
 timestamp. At most one run can actively own an order at a time. Each run has
 one `courier_id`; reassignment ends the old link before a new link takes over.
 
-Run stops identify the order, pickup or drop-off, location, sequence, and whether
-the stop was completed or cancelled. Preserve timestamped route revisions when
+Run stops identify the order, pickup or drop-off, zone, sequence, and whether the
+stop was completed or cancelled. Preserve timestamped stop-plan revisions when
 orders are added or removed. A pickup must precede its order's drop-off, and a
-cancelled order must not later receive a completed drop-off.
+cancelled order must not later receive a completed drop-off. Stop plans need not
+be calculated from a map.
+
+### Nearby-order batching rule
+
+Additional orders may share a courier only when their pickups and drop-offs are
+near the first order's respective stops. Anchor every added order to that first
+order; do not allow a chain of individually nearby additions to drift far away.
+
+Use simulated pickup-to-pickup and drop-off-to-drop-off distances for eligibility.
+These are different from an order's own `distance_km`: a short delivery can still
+be far from the first order. Zone membership alone does not prove proximity.
+Sample and retain the proximity values consistently, rather than redraw them
+each time the same candidate is checked.
+
+The distance cutoff is a configurable simulator assumption to choose before
+implementing batching. No kilometre limit or percentage of the first trip has
+been agreed yet. Eligibility does not guarantee assignment: timing, courier
+capacity, and cancellation rules still apply.
+
+Represent batching with a simple extra-travel and pickup/drop-off delay rule.
+Nearby orders are not costless additions; traffic and weather affect travel time.
+This approximates detours without calculating an actual route. Candidate
+proximity and batching decisions belong to assignment-time records, not future
+information added to the original confirmation-time feature snapshot.
 
 Final courier identity, batch membership, stop sequence, and realized detour are
 diagnostics, not confirmation-time features. Do not retroactively attach future
@@ -161,10 +188,11 @@ delivery outcomes in ways that contradict one another.
 
 ## Remaining choices, before simulator implementation
 
-1. Zone layout, locations, and the baseline distance/travel rule.
+1. Zone labels, order timing, and sampled-distance distributions for a tiny input generator.
 2. Restaurant and courier populations, capacities, and order-arrival patterns.
 3. Traffic/weather dynamics and holiday, long-weekend, and event calendars.
-4. Preparation, assignment, batching, and cancellation rules.
+4. Preparation, assignment, cancellation, and batching rules, including proximity
+   cutoffs and additional travel/stop delays.
 5. The original promise-setting policy, using only information available then.
 
 The next step addresses only item 1. Richer scope remains agreed, but none of
