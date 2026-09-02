@@ -19,6 +19,13 @@ Use synthetic zone labels and sampled distances, not maps or detailed routing.
 Additional batched orders must stay near the first order's pickup and drop-off;
 keep the exact proximity cutoff explicit when implementing that rule.
 
+The current approved task is a short, direct synthetic-data generator for
+delivery-time prediction. Sample features and calculate outcomes with a simple
+formula. Workload and courier counts are sampled context, not reconstructed state.
+Do not reintroduce marketplace objects, queues, dispatch, event clocks, intermediate
+stages, or route histories. Batching is only a sampled nearby-detour effect.
+Live replay and delayed outcome handling are separate, later steps.
+
 ## Working agreement: one small step at a time
 
 1. **Propose:** State one small objective, why it matters, which files would
