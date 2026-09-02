@@ -11,6 +11,11 @@ and operational behavior. Understanding and control matter more than speed
 or feature count. The project brief describes the destination, not permission
 to build everything.
 
+The agreed scope is a synthetic Toronto-inspired downtown market with multiple
+zones, weather, traffic, calendar effects, promised deadlines, cancellations,
+and multi-order deliveries. See `README.md` and `docs/order-schema.md` for the
+current design. Implement this scope gradually; do not silently remove it.
+
 ## Working agreement: one small step at a time
 
 1. **Propose:** State one small objective, why it matters, which files would
