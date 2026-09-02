@@ -71,6 +71,9 @@ keep the exact proximity cutoff explicit when implementing that rule.
   to a later release. Keep exploratory notebooks out of the required runtime.
 - Grow the file structure as responsibilities appear. Do not create the entire
   architecture in advance.
+- Keep Python source under `code/`, grouped by responsibility (currently
+  `code/simulator/`), tests under `tests/`, and design notes under `docs/`.
+  `code/` is not a Python package; use `PYTHONPATH=code` when running tests.
 
 ## Modeling and simulation guardrails
 

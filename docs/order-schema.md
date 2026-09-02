@@ -1,8 +1,9 @@
 # Order schema
 
-Agreed domain design, not implemented code or a database migration. The records
-below describe what information we need; they do not require separate services,
-classes, or a database at this stage.
+Agreed domain design, not a database migration. The first generator implements
+only `order_id`, `confirmed_at`, `pickup_zone_id`, `dropoff_zone_id`, and
+`distance_km`; all other fields and lifecycle mechanisms below remain planned.
+These records do not require separate services, classes, or a database now.
 
 ## Market boundary
 
@@ -15,8 +16,10 @@ classes, or a database at this stage.
   is required for this simulation.
 - Store timezone-aware timestamps in UTC. Derive local calendar features using
   `America/Toronto`, including daylight-saving changes.
-- The zone labels/count, restaurant count, order volume, and distance distributions
-  are intentionally not chosen yet. Geographic scope does not set simulation size.
+- The generator uses three zone labels and covers January 1 through August 31,
+  2026, in Toronto-local dates. Its distance and timing rules are documented in
+  the [README](../README.md#run-this-step). These remain toy defaults, not a
+  finalized restaurant population or marketplace demand model. The data is unsplit.
 
 ## What one row means
 
@@ -58,9 +61,9 @@ features. The first ETA model does not need customer identity as a predictor.
 | `promised_delivery_at` | Timestamp | Original deadline communicated at confirmation; must be after confirmation. |
 
 Keep restaurant and customer identities and their zone labels consistent across
-records. Sample positive travel distances, with shorter distances more common
-within a zone than across zones. Numerical distributions will be specified with
-the first generator. These values approximate travel, not a geometric street map.
+records when those identities are introduced. The first generator samples positive
+travel distances, with shorter distances more common within a zone than across
+zones. These values approximate travel, not a geometric street map.
 
 ## Confirmation-time context
 
@@ -186,14 +189,14 @@ Shared courier activity and restaurant queues must drive their snapshots. We
 will not independently randomize backlog, courier counts, batch flags, and
 delivery outcomes in ways that contradict one another.
 
-## Remaining choices, before simulator implementation
+## Remaining simulator choices
 
-1. Zone labels, order timing, and sampled-distance distributions for a tiny input generator.
-2. Restaurant and courier populations, capacities, and order-arrival patterns.
-3. Traffic/weather dynamics and holiday, long-weekend, and event calendars.
-4. Preparation, assignment, cancellation, and batching rules, including proximity
+1. Restaurant/customer identities and zone assignments, then courier populations,
+   capacities, and richer order-arrival patterns.
+2. Traffic/weather dynamics and holiday, long-weekend, and event calendars.
+3. Preparation, assignment, cancellation, and batching rules, including proximity
    cutoffs and additional travel/stop delays.
-5. The original promise-setting policy, using only information available then.
+4. The original promise-setting policy, using only information available then.
 
-The next step addresses only item 1. Richer scope remains agreed, but none of
-these policies, field generators, or operational mechanisms is implemented yet.
+The current increment stops at five input fields. Review it before selecting
+the next small step; none of the mechanisms in this list is implemented yet.
