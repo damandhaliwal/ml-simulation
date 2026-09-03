@@ -1,10 +1,15 @@
 # Marketplace ETA Intelligence System
 
-Current task: **generate synthetic data for predicting delivery duration**.
-No queues, courier dispatch, event clock, intermediate stages, or marketplace
-state. No trained model, train/test split, API, or deployment yet.
+Current stage: **synthetic data, chronological evaluation, three baselines,
+and a LightGBM ETA model**. Training is offline and in memory; no saved serving
+model, API, deployment, or full-dataset refit exists yet.
+There are no queues, courier dispatch, event clocks, intermediate stages, or
+marketplace state. All data and measured model errors are simulated.
 
-## Two functions
+For the latest decisions, verified results, and next step, see
+[the handoff](docs/handoff.md) and [session log](docs/session-log.md).
+
+## Generator: two functions
 
 Both live in `code/simulator/generate_orders.py`:
 
@@ -67,13 +72,29 @@ make new calls with different arguments.
 
 ## Run and check
 
-Use Python 3.10+ and the system's IANA timezone database; no third-party packages.
+The generator alone uses Python 3.10+ and the system's IANA timezone database.
+Modeling uses the pinned environment in `requirements.txt` (Python 3.12+;
+verified on CPython 3.13.7, macOS arm64). From a fresh checkout:
 
 ```sh
-python3 code/simulator/generate_orders.py \
+uv venv --python 3.13.7 .venv
+uv pip install --python .venv/bin/python -r requirements.txt
+```
+
+This installs NumPy, scikit-learn, LightGBM and their runtime dependencies into
+the project environment. No new modeling libraries are required. LightGBM also
+needs an OpenMP runtime on macOS (`libomp`, already present on the tested host).
+If import fails with a missing `libomp.dylib`, install that system dependency
+separately; the Python requirements cannot install it. Other platforms are untested.
+
+```sh
+.venv/bin/python code/simulator/generate_orders.py \
   --start 2026-01-01 --end 2026-08-31 --seed 42 --orders-per-hour 20 \
   --output data/orders_2026_jan_aug.json
-PYTHONPATH=code python3 -m unittest discover -s tests -v
+PYTHONPATH=code .venv/bin/python -W error -m unittest discover -s tests -v
+PYTHONPATH=code .venv/bin/python -m prep.dataset_validation
+PYTHONPATH=code .venv/bin/python -m models.baselines
+PYTHONPATH=code .venv/bin/python -m models.lightgbm_eta --segments
 ```
 
 The CLI requires dates and an output path, and replaces that specific output
@@ -90,7 +111,8 @@ unique `order_id` for individual calls. Independent calls carry no prior state.
 
 The current local dataset is `data/orders_2026_jan_aug.json`: **116,667 orders,
 31 columns**, covering all 243 days from January 1 through August 31, 2026.
-It contains 113,079 delivered and 3,588 cancelled orders, with no train/test split.
+It contains 113,079 delivered and 3,588 cancelled orders. The source file is
+unchanged; preparation creates eligible train/validation/test splits in memory.
 The command above reproduces this default-seed dataset. Holiday/event calendars
 were not supplied, so holiday flags are false and holiday/event names are missing.
 The three older dataset/sample files were moved to Trash; only this dataset
@@ -105,8 +127,61 @@ remains in `data/`. The data itself is not committed to Git.
 - IDs are identifiers, not automatically model features.
 - The promise is separate from the prediction. Lateness means delivery after
   that original deadline; a point prediction is not a lateness probability.
-- Later: agree on a chronological split and establish simple baselines, using
-  MAE as the primary metric. No splitting or training happens in this step.
+- MAE is the primary metric. Bias is predicted minus actual; P95 is the 95th
+  percentile of absolute error. RMSE is also reported. All error units are minutes.
+
+## Chronological evaluation
+
+One row is one order. Date ranges refer to **Toronto-local confirmation dates**:
+
+| Split | Confirmation dates (2026) | Label rule | Eligible delivered rows |
+| --- | --- | --- | ---: |
+| Train | January 1–June 30 | Delivered strictly before July 1 at 00:00 | 84,104 |
+| Validation | July 1–31 | Delivered strictly before August 1 at 00:00 | 14,466 |
+| Test | August 1–31 | Wait for every delivery, including after month-end | 14,481 |
+
+Sixteen training labels and twelve validation labels arrive too late for their
+cutoffs. They are returned separately as `unavailable_labels`, not deleted from
+the source, moved to a different split, or included in evaluation denominators.
+The 113,079 delivered rows reconcile to 113,051 eligible rows plus 28 exclusions.
+Cancelled rows remain separate and are never assigned a zero-minute target.
+For custom ranges, cutoffs are the next split's start date at Toronto midnight.
+Timestamps must include a timezone and agree with the delivery duration.
+
+The baselines are global mean, a fixed preparation/travel heuristic, and linear
+regression on seven numerical confirmation-time features. LightGBM uses those
+features plus temperature, calendar hour/day, zones, and weather. Its fixed
+settings are 300 maximum trees, learning rate 0.05, 31 leaves, minimum 20 samples
+per leaf, seed 42, and L1 loss. Only July validation selects the tree count
+(25-round early stopping); there is no test-set tuning or train-plus-validation
+refit before test scoring. Model/feature definitions remain in `code/models/`.
+
+By default both evaluation functions and CLIs score **train and validation only**.
+Use this explicit opt-in only when the configuration is frozen:
+
+```sh
+PYTHONPATH=code .venv/bin/python -W error -m models.lightgbm_eta --include-test --segments
+```
+
+`models.baselines` accepts the same flags. These commands do not save a model.
+The opt-in is a guard against accidental test scoring, not a one-use lock.
+August was explicitly evaluated on September 3; do not tune against those results.
+
+Validation/test results include counts and errors by weather, pickup zone,
+local hour (00–23), distance (≤2 km, >2–4 km, >4 km), and idle-courier count.
+Each dimension partitions the scored population; dimensions must not be summed
+together. Only observed groups are emitted: absent groups are **not evaluated**,
+not zero-error groups. July/August contain no snow, and idle-courier counts are
+only 1 or 2 in this default dataset. There are no agreed business error thresholds.
+
+## Before a full-data refit
+
+Review [the evaluation record](docs/evaluation-2026-09-03.md) and confirm that its
+error/bias tradeoffs are acceptable for this learning prototype. Unit-test success
+alone is not a model-acceptance criterion. A later refit can use all 113,079
+delivered rows (including the 28 previously excluded rows), only after their labels
+have arrived, with the validation-selected tree count fixed. Cancelled rows cannot
+train the duration target. Once August is included, these August scores do not
+evaluate that refitted model; a later untouched window is needed for that.
 
 The broader roadmap and working agreement remain in [AGENTS.md](AGENTS.md).
-Next: inspect the sampling rules and the delivery-time formula together.

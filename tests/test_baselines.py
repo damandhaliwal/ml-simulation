@@ -5,6 +5,7 @@ from models.baselines import (
     HeuristicBaseline,
     LinearRegressionBaseline,
     compute_metrics,
+    compute_segment_metrics,
     evaluate_baselines,
 )
 
@@ -22,6 +23,7 @@ class TestBaselines(unittest.TestCase):
                 "orders_waiting_for_courier": 0,
                 "idle_couriers": 2,
                 "precipitation_mm_per_hour": 0.0,
+                "weather_type": "clear", "pickup_zone_id": "Z1", "local_hour": 12,
             },
             {
                 "order_id": "O2",
@@ -33,6 +35,7 @@ class TestBaselines(unittest.TestCase):
                 "orders_waiting_for_courier": 2,
                 "idle_couriers": 1,
                 "precipitation_mm_per_hour": 3.0,
+                "weather_type": "rain", "pickup_zone_id": "Z2", "local_hour": 17,
             },
         ]
 
@@ -97,6 +100,29 @@ class TestBaselines(unittest.TestCase):
         offset = compute_metrics([20.0, 40.0], [25.0, 37.0])
         self.assertEqual(offset["mae"], 4.0)
         self.assertEqual(offset["mean_bias"], 1.0)
+        self.assertEqual(offset["p95_error"], 4.9)
+        self.assertEqual(offset["rmse"], 4.123)
+        for invalid in (float("nan"), float("inf")):
+            with self.assertRaises(ValueError):
+                compute_metrics([20.0], [invalid])
+
+    def test_segment_counts_metrics_and_distance_boundaries(self):
+        orders = self.sample_orders + [dict(self.sample_orders[0], distance_km=4.01)]
+        metrics = compute_segment_metrics(orders, [35.0, 47.0, 30.0])
+        for groups in metrics.values():
+            self.assertEqual(sum(m["count"] for m in groups.values()), 3)
+        self.assertEqual(set(metrics["distance_band"]), {"0-2 km", "2-4 km", ">4 km"})
+        self.assertEqual(metrics["weather_type"]["rain"]["mean_bias"], -3.0)
+        self.assertEqual(metrics["weather_type"]["clear"]["mae"], 2.5)
+        self.assertNotIn("snow", metrics["weather_type"])
+        self.assertEqual(compute_segment_metrics([], []), {})
+        with self.assertRaises(ValueError):
+            compute_segment_metrics(orders, [])
+
+    def test_test_set_is_not_read_without_opt_in(self):
+        results, _ = evaluate_baselines({"train": self.sample_orders, "val": self.sample_orders, "test": None})
+        for metrics in results.values():
+            self.assertEqual(set(metrics), {"train", "val"})
 
     def test_evaluate_baselines_pipeline(self):
         splits = {
@@ -104,7 +130,7 @@ class TestBaselines(unittest.TestCase):
             "val": self.sample_orders,
             "test": self.sample_orders,
         }
-        results, lr_model = evaluate_baselines(splits)
+        results, lr_model = evaluate_baselines(splits, include_test=True)
         self.assertIn("Global Mean", results)
         self.assertIn("Domain Heuristic", results)
         self.assertIn("Linear Regression", results)
@@ -118,4 +144,3 @@ class TestBaselines(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

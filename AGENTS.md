@@ -19,9 +19,13 @@ Use synthetic zone labels and sampled distances, not maps or detailed routing.
 Additional batched orders must stay near the first order's pickup and drop-off;
 keep the exact proximity cutoff explicit when implementing that rule.
 
-The current approved task is a short, direct synthetic-data generator for
-delivery-time prediction. Sample features and calculate outcomes with a simple
-formula. Workload and courier counts are sampled context, not reconstructed state.
+The implementation now includes the direct synthetic-data generator, label-aware
+chronological splits, three baselines, and offline LightGBM evaluation. The latest
+approved step fixes review findings and documents/verifies the evaluation; see
+`docs/handoff.md` before continuing. Full-data refitting is conditional on Daman
+accepting the reported model results, not merely on unit tests passing.
+Sample features and calculate outcomes with a simple formula. Workload and
+courier counts are sampled context, not reconstructed state.
 Do not reintroduce marketplace objects, queues, dispatch, event clocks, intermediate
 stages, or route histories. Batching is only a sampled nearby-detour effect.
 Live replay and delayed outcome handling are separate, later steps.

@@ -1,5 +1,5 @@
 import argparse
-from math import sqrt
+from math import isfinite, sqrt
 from pathlib import Path
 from statistics import mean
 from typing import Protocol
@@ -105,6 +105,8 @@ def compute_metrics(y_true: list[float], y_pred: list[float]) -> dict[str, float
         raise ValueError(f"Length mismatch: {len(y_true)} actual vs {len(y_pred)} predicted")
     if not y_true:
         raise ValueError("Cannot evaluate metrics on empty lists")
+    if any(not isfinite(value) for value in (*y_true, *y_pred)):
+        raise ValueError("Metrics require finite actuals and predictions")
 
     errors = [p - a for a, p in zip(y_true, y_pred)]
     abs_errors = [abs(e) for e in errors]
@@ -122,8 +124,47 @@ def compute_metrics(y_true: list[float], y_pred: list[float]) -> dict[str, float
     }
 
 
-def evaluate_baselines(splits: dict[str, list[dict]]) -> tuple[dict[str, dict[str, dict[str, float]]], LinearRegressionBaseline]:
-    """Fit all baselines on train split and evaluate on train, val, and test splits."""
+def compute_segment_metrics(orders: list[dict], predictions: list[float]) -> dict[str, dict]:
+    """Observed confirmation-time segments; each dimension partitions the scored rows."""
+    if len(orders) != len(predictions):
+        raise ValueError("Orders and predictions must have the same length")
+    groups: dict[str, dict[str, list[int]]] = {}
+    for index, order in enumerate(orders):
+        distance = order["distance_km"]
+        segments = {
+            "weather_type": order["weather_type"],
+            "pickup_zone_id": order["pickup_zone_id"],
+            "local_hour": f"{order['local_hour']:02d}",
+            "distance_band": "0-2 km" if distance <= 2 else "2-4 km" if distance <= 4 else ">4 km",
+            "idle_couriers": str(order["idle_couriers"]),
+        }
+        for dimension, value in segments.items():
+            groups.setdefault(dimension, {}).setdefault(value, []).append(index)
+
+    results = {}
+    for dimension, values in groups.items():
+        results[dimension] = {}
+        for value, indices in sorted(values.items()):
+            actuals = [float(orders[i]["delivery_duration_minutes"]) for i in indices]
+            preds = [predictions[i] for i in indices]
+            results[dimension][value] = {"count": len(indices), **compute_metrics(actuals, preds)}
+    return results
+
+
+def print_segment_metrics(results: dict[str, dict[str, dict]]) -> None:
+    for model_name, split_metrics in results.items():
+        for split_name, metrics in split_metrics.items():
+            for dimension, groups in metrics.get("segments", {}).items():
+                print(f"\n{model_name} / {split_name.upper()} / {dimension} (simulated)")
+                for value, m in groups.items():
+                    print(f"  {value:<12} n={m['count']:>6} MAE={m['mae']:.3f} "
+                          f"bias={m['mean_bias']:+.3f} P95={m['p95_error']:.3f} RMSE={m['rmse']:.3f}")
+
+
+def evaluate_baselines(
+    splits: dict[str, list[dict]], *, include_test: bool = False,
+) -> tuple[dict[str, dict[str, dict]], LinearRegressionBaseline]:
+    """Fit on train; score train/validation and optionally the frozen test set."""
     models: dict[str, BaselineModel] = {
         "Global Mean": GlobalMeanBaseline(),
         "Domain Heuristic": HeuristicBaseline(),
@@ -131,17 +172,20 @@ def evaluate_baselines(splits: dict[str, list[dict]]) -> tuple[dict[str, dict[st
     }
 
     train_orders = splits["train"]
-    for name, model in models.items():
+    for model in models.values():
         model.fit(train_orders)
 
-    results: dict[str, dict[str, dict[str, float]]] = {}
+    results: dict[str, dict[str, dict]] = {}
     for model_name, model in models.items():
         results[model_name] = {}
-        for split_name in ("train", "val", "test"):
+        for split_name in (("train", "val", "test") if include_test else ("train", "val")):
             orders = splits[split_name]
             y_true = [float(o["delivery_duration_minutes"]) for o in orders]
             y_pred = model.predict(orders)
-            results[model_name][split_name] = compute_metrics(y_true, y_pred)
+            metrics = {"count": len(orders), **compute_metrics(y_true, y_pred)}
+            if split_name != "train":
+                metrics["segments"] = compute_segment_metrics(orders, y_pred)
+            results[model_name][split_name] = metrics
 
     lr_model = models["Linear Regression"]
     assert isinstance(lr_model, LinearRegressionBaseline)
@@ -156,12 +200,15 @@ def main() -> None:
         default=Path("data/orders_2026_jan_aug.json"),
         help="Path to orders JSON file.",
     )
+    parser.add_argument("--include-test", action="store_true", help="Explicitly score the final test set; do not tune on it.")
+    parser.add_argument("--segments", action="store_true", help="Print validation/test segment metrics in minutes.")
     args = parser.parse_args()
 
     dataset = prepare_dataset(args.data)
     splits = dataset["splits"]
-    results, lr_model = evaluate_baselines(splits)
+    results, lr_model = evaluate_baselines(splits, include_test=args.include_test)
 
+    print("Synthetic data only. Test scoring is " + ("enabled." if args.include_test else "disabled."))
     print("\n" + "=" * 76)
     print(f"{'Model':<20} | {'Split':<6} | {'MAE (m)':<8} | {'Bias (m)':<9} | {'P95 (m)':<8} | {'RMSE (m)':<8}")
     print("-" * 76)
@@ -173,6 +220,9 @@ def main() -> None:
             )
         print("-" * 76)
 
+    if args.segments:
+        print_segment_metrics(results)
+
     print("\n=== Linear Regression Learned Weights ===")
     print(f"Intercept: {lr_model.model.intercept_:.3f}")
     for feature, coef in zip(lr_model.feature_names, lr_model.model.coef_):
@@ -181,4 +231,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

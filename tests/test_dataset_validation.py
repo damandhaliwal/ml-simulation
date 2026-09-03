@@ -3,13 +3,10 @@ import tempfile
 import unittest
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from prep.dataset_validation import (
-    DEFAULT_TEST_RANGE,
-    DEFAULT_TRAIN_RANGE,
-    DEFAULT_VAL_RANGE,
     MARKET_TIMEZONE,
+    filter_available_labels,
     load_orders,
     prepare_dataset,
     separate_cancellations,
@@ -111,7 +108,7 @@ class TestDatasetValidation(unittest.TestCase):
             )
 
     def test_validate_splits_and_leakage_detection(self):
-        train_order = self._make_order("O_TR", datetime(2026, 6, 30, 23, 50, tzinfo=MARKET_TIMEZONE), duration=20.0)
+        train_order = self._make_order("O_TR", datetime(2026, 6, 30, 23, 30, tzinfo=MARKET_TIMEZONE), duration=20.0)
         val_order = self._make_order("O_VL", datetime(2026, 7, 1, 0, 10, tzinfo=MARKET_TIMEZONE), duration=30.0)
         test_order = self._make_order("O_TS", datetime(2026, 8, 1, 0, 5, tzinfo=MARKET_TIMEZONE), duration=40.0)
 
@@ -146,6 +143,50 @@ class TestDatasetValidation(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_splits(leaky_splits)
 
+    def test_label_boundaries_are_exclusive_and_rows_are_not_reassigned(self):
+        cutoffs = {
+            "train": datetime(2026, 7, 1, tzinfo=MARKET_TIMEZONE),
+            "val": datetime(2026, 8, 1, tzinfo=MARKET_TIMEZONE),
+        }
+        splits = {"train": [], "val": [], "test": []}
+        for name, cutoff in cutoffs.items():
+            for suffix, duration in (("before", 29), ("equal", 30), ("after", 31)):
+                splits[name].append(self._make_order(f"{name}-{suffix}", cutoff - timedelta(minutes=30), duration=duration))
+        # Test outcomes may mature after the confirmation-date window.
+        splits["test"] = [self._make_order("test", datetime(2026, 8, 31, 23, 59, tzinfo=MARKET_TIMEZONE))]
+        eligible, unavailable = filter_available_labels(splits, cutoffs)
+        for name in cutoffs:
+            self.assertEqual([o["order_id"] for o in eligible[name]], [f"{name}-before"])
+            self.assertEqual([o["order_id"] for o in unavailable[name]], [f"{name}-equal", f"{name}-after"])
+            self.assertEqual(len(splits[name]), 3)
+        self.assertEqual(eligible["test"], splits["test"])
+        self.assertEqual(unavailable["test"], [])
+        validate_splits(eligible, label_cutoffs=cutoffs)
+        with self.assertRaisesRegex(ValueError, "Label leakage"):
+            validate_splits(splits, label_cutoffs=cutoffs)
+
+    def test_default_validator_rejects_labels_arriving_after_next_split_starts(self):
+        splits = {
+            "train": [self._make_order("tr", datetime(2026, 6, 30, 23, 59, tzinfo=MARKET_TIMEZONE))],
+            "val": [self._make_order("vl", datetime(2026, 7, 1, 0, 1, tzinfo=MARKET_TIMEZONE))],
+            "test": [self._make_order("ts", datetime(2026, 8, 1, tzinfo=MARKET_TIMEZONE))],
+        }
+        with self.assertRaisesRegex(ValueError, "Label leakage"):
+            validate_splits(splits)
+
+    def test_delivery_timestamps_are_required_aware_and_consistent(self):
+        order = self._make_order("O1", datetime(2026, 6, 30, 12, tzinfo=MARKET_TIMEZONE))
+        for invalid in (None, "2026-06-30T12:30:00", "2026-06-30T12:30:00+00:00"):
+            with self.subTest(delivered_at=invalid), self.assertRaises(ValueError):
+                separate_cancellations([dict(order, delivered_at=invalid)])
+        with self.assertRaises(ValueError):
+            separate_cancellations([dict(order, confirmed_at="2026-06-30T12:00:00")])
+
+    def test_duplicate_ids_cannot_be_hidden_by_label_filtering(self):
+        order = self._make_order("same", datetime(2026, 6, 30, 23, 59, tzinfo=MARKET_TIMEZONE))
+        with self.assertRaisesRegex(ValueError, "Duplicate"):
+            separate_cancellations([order, order])
+
     def test_prepare_dataset_pipeline(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             file_path = Path(tmp_dir) / "orders.json"
@@ -154,14 +195,18 @@ class TestDatasetValidation(unittest.TestCase):
                 self._make_order("O2", datetime(2026, 7, 5, 12, tzinfo=MARKET_TIMEZONE), duration=35.0),
                 self._make_order("O3", datetime(2026, 8, 10, 14, tzinfo=MARKET_TIMEZONE), duration=45.0),
                 self._make_order("O4", datetime(2026, 4, 1, 12, tzinfo=MARKET_TIMEZONE), status="cancelled", duration=None),
+                self._make_order("O5", datetime(2026, 6, 30, 23, 59, tzinfo=MARKET_TIMEZONE)),
+                self._make_order("O6", datetime(2026, 7, 31, 23, 59, tzinfo=MARKET_TIMEZONE)),
             ]
             file_path.write_text(json.dumps(orders), encoding="utf-8")
 
             res = prepare_dataset(file_path)
-            self.assertEqual(res["summary"]["total_orders"], 4)
-            self.assertEqual(res["summary"]["delivered_orders"], 3)
+            self.assertEqual(res["summary"]["total_orders"], 6)
+            self.assertEqual(res["summary"]["delivered_orders"], 5)
             self.assertEqual(res["summary"]["cancelled_orders"], 1)
-            self.assertEqual(res["summary"]["cancellation_rate_pct"], 25.0)
+            self.assertEqual(res["summary"]["cancellation_rate_pct"], 16.67)
+            self.assertEqual(res["summary"]["unavailable_label_counts"], {"train": 1, "val": 1, "test": 0})
+            self.assertEqual(res["summary"]["label_cutoffs"]["train"], "2026-07-01T00:00:00-04:00")
             self.assertEqual(len(res["splits"]["train"]), 1)
             self.assertEqual(len(res["splits"]["val"]), 1)
             self.assertEqual(len(res["splits"]["test"]), 1)
@@ -169,4 +214,3 @@ class TestDatasetValidation(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
