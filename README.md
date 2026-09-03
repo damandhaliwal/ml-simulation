@@ -1,8 +1,8 @@
 # Marketplace ETA Intelligence System
 
 Current stage: **synthetic data, chronological evaluation, three baselines,
-and a LightGBM ETA model**. Training is offline and in memory; no saved serving
-model, API, deployment, or full-dataset refit exists yet.
+and a locally saved, full-data LightGBM ETA model**. Training and prediction are
+offline; no prediction API or deployment exists yet.
 There are no queues, courier dispatch, event clocks, intermediate stages, or
 marketplace state. All data and measured model errors are simulated.
 
@@ -174,14 +174,57 @@ together. Only observed groups are emitted: absent groups are **not evaluated**,
 not zero-error groups. July/August contain no snow, and idle-courier counts are
 only 1 or 2 in this default dataset. There are no agreed business error thresholds.
 
-## Before a full-data refit
+## Full-data refit and local artifact
 
-Review [the evaluation record](docs/evaluation-2026-09-03.md) and confirm that its
-error/bias tradeoffs are acceptable for this learning prototype. Unit-test success
-alone is not a model-acceptance criterion. A later refit can use all 113,079
-delivered rows (including the 28 previously excluded rows), only after their labels
-have arrived, with the validation-selected tree count fixed. Cancelled rows cannot
-train the duration target. Once August is included, these August scores do not
-evaluate that refitted model; a later untouched window is needed for that.
+Daman approved the refit after reviewing [the evaluation record](docs/evaluation-2026-09-03.md).
+The local model uses all **113,079 delivered rows**, including the 28 labels
+previously excluded by the earlier monthly cutoffs. All 3,588 cancelled rows are
+excluded. It fits exactly **160 trees**, selected by July validation; features and
+other settings are unchanged. No validation set or early stopping is used here.
+
+```sh
+PYTHONPATH=code .venv/bin/python -W error -m models.refit_eta \
+  --data data/orders_2026_jan_aug.json \
+  --output-dir artifacts/eta_2026_jan_aug \
+  --observed-at 2026-09-03T00:00:00Z
+```
+
+The observation time is explicit: every confirmation and delivered outcome must
+precede it. This command refuses existing output directories; choose a new name
+for a new approved run. It reuses the raw-data validation but not the earlier
+split filtering, so the full-data refit does not accidentally omit the 28 labels.
+
+Two local, Git-ignored files are saved:
+
+- `artifacts/eta_2026_jan_aug/model.joblib`: the fitted wrapper and LightGBM model.
+- `artifacts/eta_2026_jan_aug/metadata.json`: source/model/code checksums, row counts,
+  source and training windows, observation/training times, feature order and
+  categorical mappings, prediction rounding/floor, model parameters, versions,
+  and the number of rows checked for exact reload prediction equality.
+
+After fitting, predictions are compared exactly before and after loading on all
+113,079 training rows. The metadata sidecar is written only after this check.
+A failed save can leave an incomplete directory; it is not a successful artifact.
+
+Load our own trusted artifact from Python started with `PYTHONPATH=code`:
+
+```python
+from models.refit_eta import load_artifact
+
+model, metadata = load_artifact("artifacts/eta_2026_jan_aug")
+predictions = model.predict([order])  # Existing order dictionary; outcome fields are not required.
+```
+
+Joblib loading can execute code: **never load an untrusted artifact**, even if
+its checksum matches a supplied metadata file. The loader checks format, feature
+contract, exact Python/package versions, model checksum, fitted state, and tree
+count. Checksums detect accidental corruption; they are not signatures. Reuse the
+pinned environment. The unchanged unknown-category policy maps unknown zones or
+weather to -1; this is not a substitute for future request validation.
+
+January–August is now training data. The recorded August results describe the
+earlier model, **not this refitted model**. No new held-out score is claimed; a
+later untouched window is needed to assess the refit. This is still synthetic
+learning work, not evidence of real-world delivery accuracy.
 
 The broader roadmap and working agreement remain in [AGENTS.md](AGENTS.md).

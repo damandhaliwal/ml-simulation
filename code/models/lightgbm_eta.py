@@ -38,6 +38,9 @@ ALL_FEATURES = NUMERICAL_FEATURES + CATEGORICAL_FEATURES
 
 ZONE_MAP = {"Z1": 0, "Z2": 1, "Z3": 2}
 WEATHER_MAP = {"clear": 0, "rain": 1, "snow": 2, "storm": 3}
+UNKNOWN_CATEGORY_CODE = -1
+PREDICTION_FLOOR_MINUTES = 5.0
+PREDICTION_DECIMALS = 2
 
 
 def extract_features(orders: list[dict]) -> np.ndarray:
@@ -47,9 +50,9 @@ def extract_features(orders: list[dict]) -> np.ndarray:
         num_vals = [float(o[f]) for f in NUMERICAL_FEATURES]
         # Encode categoricals as integers; fallback to -1 for unseen categories
         cat_vals = [
-            float(ZONE_MAP.get(o["pickup_zone_id"], -1)),
-            float(ZONE_MAP.get(o["dropoff_zone_id"], -1)),
-            float(WEATHER_MAP.get(o["weather_type"], -1)),
+            float(ZONE_MAP.get(o["pickup_zone_id"], UNKNOWN_CATEGORY_CODE)),
+            float(ZONE_MAP.get(o["dropoff_zone_id"], UNKNOWN_CATEGORY_CODE)),
+            float(WEATHER_MAP.get(o["weather_type"], UNKNOWN_CATEGORY_CODE)),
         ]
         rows.append(num_vals + cat_vals)
     return np.array(rows, dtype=np.float64)
@@ -135,7 +138,7 @@ class LightGBMETAModel:
         X = extract_features(orders)
         raw_preds = self.model.predict(X)
         # Floor predictions at 5.0 minutes to prevent physically impossible estimates
-        return [round(float(max(5.0, p)), 2) for p in raw_preds]
+        return [round(float(max(PREDICTION_FLOOR_MINUTES, p)), PREDICTION_DECIMALS) for p in raw_preds]
 
     def get_feature_importances(self, importance_type: str = "gain") -> dict[str, float]:
         """Return feature names mapped to their importance values."""

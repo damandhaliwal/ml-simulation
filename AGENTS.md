@@ -20,10 +20,11 @@ Additional batched orders must stay near the first order's pickup and drop-off;
 keep the exact proximity cutoff explicit when implementing that rule.
 
 The implementation now includes the direct synthetic-data generator, label-aware
-chronological splits, three baselines, and offline LightGBM evaluation. The latest
-approved step fixes review findings and documents/verifies the evaluation; see
-`docs/handoff.md` before continuing. Full-data refitting is conditional on Daman
-accepting the reported model results, not merely on unit tests passing.
+chronological splits, three baselines, offline LightGBM evaluation, and a local
+full-data refit/save/load workflow. Daman approved the 160-tree refit on all observed
+delivered labels; see `docs/handoff.md` for the verified artifact and next decision.
+Generated model artifacts stay local and Git-ignored. No API or deployment has
+been approved as part of this step.
 Sample features and calculate outcomes with a simple formula. Workload and
 courier counts are sampled context, not reconstructed state.
 Do not reintroduce marketplace objects, queues, dispatch, event clocks, intermediate

@@ -3,6 +3,97 @@
 Newest entries first. Repository-local session capture and handoff, so the notes
 travel with the code; no global session log or unrelated history was modified.
 
+## 2026-09-03 17:01 EDT — Full-data refit and local model artifact
+
+Project: ml-simulation. Duration: brief conversation, bounded implementation.
+
+### Decisions
+
+- Daman approved refitting all 113,079 delivered orders at the previously selected
+  160 trees, saving the model/metadata, checking reload predictions, and publishing
+  code/documentation only. No further acceptance question or model tuning was needed.
+- Kept the original simulator, dataset, feature order, categorical mappings, and
+  other LightGBM settings unchanged. The 28 previously excluded boundary labels
+  are eligible now; the 3,588 cancelled rows still cannot train the duration target.
+- Observation time is explicitly `2026-09-03T00:00:00Z`, after the last delivery
+  at `2026-09-01T04:42:27.651978+00:00`. All confirmations/outcomes must precede it.
+- Persist the fitted wrapper with Joblib (an existing dependency), plus readable
+  JSON metadata. Require a new output directory; do not overwrite prior artifacts.
+- Keep `artifacts/` Git-ignored. The session-capture skill updates this repository's
+  log and handoff; no global memory or unrelated files are modified.
+
+### Implementation walkthrough
+
+- `code/models/refit_eta.py` contains the new workflow:
+  - `refit_eta(data, output_dir, observed_at=...)` validates raw orders and label
+    availability, fits exactly 160 trees with no validation set, writes the model,
+    checks every delivered-row prediction after reload, writes metadata, then
+    verifies the public loader. It returns the metadata dictionary.
+  - `load_artifact(directory)` returns `(model, metadata)` after checking the
+    format, feature contract, exact runtime versions, checksum, fitted state,
+    and tree count. Only load our own trusted artifacts: Joblib can execute code.
+  - `feature_contract()` records target, prediction moment, feature order, category
+    maps, unknown-category code, matrix dtype, floor, and rounding.
+  - `file_sha256(path)` records/verifies file content; `runtime_versions()` records
+    Python and the eight pinned package versions. `main()` exposes the CLI.
+- The refit calls `load_orders` and `separate_cancellations`, not `prepare_dataset`:
+  using the latter would incorrectly discard the 28 now-observed boundary labels.
+- Existing -1 unknown-category, 5-minute floor, and 2-decimal rounding values are
+  named constants in `lightgbm_eta.py` so inference and metadata share them.
+  Values and prediction behavior did not change.
+- Metadata includes source/model/implementation hashes, training/source windows,
+  latest delivery, observation/training timestamps, row counts, actual tree count,
+  parameters, feature contract, runtime/platform, and full-row roundtrip count.
+- Tests cover full-row inclusion/no validation set, unavailable labels, naive
+  observation times, no delivered labels, no overwrite, incompatible metadata,
+  corruption before deserialization, and failed roundtrip before metadata publication.
+
+### Checks and results
+
+```sh
+PYTHONPATH=code .venv/bin/python -W error -m unittest discover -s tests -v
+PYTHONPATH=code /private/tmp/eta-review-env.xmKqa0/venv/bin/python -W error -m unittest discover -s tests -q
+PYTHONPATH=code .venv/bin/python -W error -m models.refit_eta \
+  --data data/orders_2026_jan_aug.json \
+  --output-dir artifacts/eta_2026_jan_aug \
+  --observed-at 2026-09-03T00:00:00Z
+git diff --check
+git check-ignore -v artifacts/eta_2026_jan_aug/model.joblib artifacts/eta_2026_jan_aug/metadata.json
+```
+
+- 43 tests pass with warnings treated as errors in both environments (seven new tests).
+- Actual refit: 113,079 delivered rows, exactly 160 trees, no early stopping.
+- Exact public predictions match before/after reload on all 113,079 delivered
+  orders. Separate Python processes in both pinned environments also agree on
+  all predictions after removing outcome fields from input rows.
+- Cross-process prediction digest (ordered little-endian float64 outputs):
+  `2d4ac689f8317720ab6f58fabb170201f2e11148e608983136721999339f809f`.
+- Model file: 478,252 bytes; SHA-256
+  `29447c8ee3ac6ac62d0f72b61d43f24668d01ed62b7974266b9f7991d3ca5dcd`.
+- Source dataset and implementation hashes match the metadata. The source hash
+  remains `be32c722f37cbe6a80ce25a45de70765765b512fd8309e57ace7b2c28d9d5666`.
+- Both artifact files are ignored by Git. No environment/dependency changes.
+
+### Artifacts
+
+- Added code/tests: `code/models/refit_eta.py`, `tests/test_refit_eta.py`.
+- Updated: `.gitignore`, `code/models/lightgbm_eta.py`, README, AGENTS, and handoff/log.
+- Local only: `artifacts/eta_2026_jan_aug/model.joblib` and `metadata.json`.
+- Preserved unchanged: `docs/evaluation-2026-09-03.md`, simulator, raw dataset,
+  and unrelated HTML exports.
+
+### Open questions and follow-ups
+
+- [ ] Agree on the next bounded prediction interface/input-validation step.
+- [ ] Agree on a later untouched window to evaluate the full-data model.
+
+### Context
+
+The refit is complete, not merely proposed. It now uses August for training, so
+the earlier 3.196-minute August MAE does not evaluate this artifact. No in-sample
+metric has been presented as generalization evidence. There is no API, deployment,
+automatic promotion, new dependency, or permission to begin the next step.
+
 ## 2026-09-03 16:42 EDT — Review corrections and frozen ETA evaluation
 
 Project: ml-simulation. Duration: brief conversation, substantive implementation.
