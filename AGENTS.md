@@ -21,13 +21,14 @@ keep the exact proximity cutoff explicit when implementing that rule.
 
 The implementation now includes the direct synthetic-data generator, label-aware
 chronological splits, three baselines, offline LightGBM evaluation, and a local
-full-data refit/save/load workflow. The approved next step adds a validated local,
-single-order prediction interface; see `docs/handoff.md` for its review state.
-For this interface step, Daman explicitly requested review before committing:
-leave changes unstaged/uncommitted and do not push until he approves publication.
-This overrides the recurring publish workflow below for this step only.
-Generated model artifacts stay local and Git-ignored. No API or deployment has
-been approved as part of this step.
+full-data refit/save/load workflow, validated Python/CLI interface, and local
+FastAPI `/predict` and `/health` endpoints. The CLI interface was published with
+Daman's explicit approval in `6e8c0aa`; its temporary no-commit instruction is
+resolved. Daman then approved the local API step, including its dependencies
+and checks, under the recurring publish workflow below.
+Generated model artifacts stay local and Git-ignored. Docker, cloud deployment,
+database logging, and live replay remain separate, unapproved implementation
+steps. See `docs/handoff.md` for verification and the next decision.
 Sample features and calculate outcomes with a simple formula. Workload and
 courier counts are sampled context, not reconstructed state.
 Do not reintroduce marketplace objects, queues, dispatch, event clocks, intermediate

@@ -1,9 +1,9 @@
 # Marketplace ETA Intelligence System
 
 Current stage: **synthetic data, chronological evaluation, three baselines,
-and a locally saved, full-data LightGBM ETA model with a validated single-order
-prediction interface**. Training and prediction are offline; no prediction API
-or deployment exists yet.
+and a locally saved, full-data LightGBM ETA model with validated Python/CLI and
+local HTTP prediction interfaces**. Training is offline; the API runs only on
+localhost. No Docker container or cloud deployment exists yet.
 There are no queues, courier dispatch, event clocks, intermediate stages, or
 marketplace state. All data and measured model errors are simulated.
 
@@ -82,8 +82,9 @@ uv venv --python 3.13.7 .venv
 uv pip install --python .venv/bin/python -r requirements.txt
 ```
 
-This installs NumPy, scikit-learn, LightGBM and their runtime dependencies into
-the project environment. No new modeling libraries are required. LightGBM also
+This installs NumPy, scikit-learn, LightGBM, the FastAPI/Uvicorn server, the HTTPX2
+test client, and their pinned dependencies into the project environment. The
+model package versions are unchanged by the API step. LightGBM also
 needs an OpenMP runtime on macOS (`libomp`, already present on the tested host).
 If import fails with a missing `libomp.dylib`, install that system dependency
 separately; the Python requirements cannot install it. Other platforms are untested.
@@ -231,8 +232,8 @@ learning work, not evidence of real-world delivery accuracy.
 
 ## Local prediction interface
 
-The interface accepts **one JSON object**, validates it, loads the explicitly
-selected trusted artifact, and returns one duration prediction. It does not
+The Python/CLI interface accepts **one JSON object**, validates it, loads the
+explicitly selected trusted artifact, and returns one duration prediction. It does not
 retrain, save predictions, start a server, or alter the artifact. Each call loads
 the model again; this small local interface is not a latency-optimized service.
 
@@ -299,5 +300,60 @@ input. `predict_eta(request, artifact_dir)` validates before loading and returns
 the response dictionary. The CLI prints JSON only on success; malformed request
 JSON, request validation failures, and ordinary file/compatibility errors exit
 with status 2 and an error on stderr. It never silently falls back to another model.
+
+## Local HTTP API
+
+`code/serving/api.py` exposes the same request contract through FastAPI. It calls
+the existing validator and feature extraction; no new feature definitions or
+model fitting are introduced. The saved artifact is loaded **once per server
+startup**, not once per request, using FastAPI's
+[lifespan mechanism](https://fastapi.tiangolo.com/advanced/events/).
+
+Start it from the repository root after installing `requirements.txt`:
+
+```sh
+PYTHONPATH=code .venv/bin/python -W error -m serving.api \
+  --model-dir artifacts/eta_2026_jan_aug --port 8000
+```
+
+This runs in the foreground on **127.0.0.1 only**, with one worker process.
+Stop it with **Ctrl+C**. From another terminal:
+
+```sh
+curl --fail-with-body http://127.0.0.1:8000/health
+curl --fail-with-body http://127.0.0.1:8000/predict \
+  -H 'Content-Type: application/json' \
+  --data-binary @docs/prediction-request.example.json
+```
+
+- `GET /health`: HTTP 200 with `status: "ready"`, `model_sha256`, and `simulated`.
+  This means the checked artifact is loaded, not that its accuracy is acceptable.
+- `POST /predict`: HTTP 200 with the same response as the CLI. The existing example
+  returns 43.63 minutes with the same model checksum. It is still synthetic.
+- Invalid/missing fields or malformed/non-object JSON: HTTP 422 with a `detail`
+  string and no prediction. Numeric strings/booleans, unknown categories, and
+  outcome fields remain invalid. Arbitrary invalid bodies are not echoed back.
+- Missing, corrupt, or incompatible artifact: startup fails. There is no fallback
+  model. An app called outside its startup lifecycle reports HTTP 503, not ready.
+- Unexpected inference errors remain server errors (HTTP 500), not misleading
+  input-validation errors. Wrong methods return 405; unknown routes return 404.
+
+`create_app(artifact_dir)` builds the app without loading anything. Its startup
+context loads and retains the model/metadata, and clears the reference on shutdown.
+The two routes use that in-memory snapshot. If model files change on disk, restart
+with the explicitly selected artifact to load a new version; there is no hot swap.
+The synchronous prediction route runs off the async event loop. One worker is
+not a throughput guarantee; load/concurrency testing has not been done.
+
+The HTTP client is **HTTPX2** because the pinned Starlette test client deprecates
+HTTPX. AnyIO is pinned to 4.14.2 because Starlette 1.6.0 imports aliases deprecated
+in 4.15; no warning suppression is used. All 70 tests pass with `-W error` in both
+the project environment and a fresh environment installed from `requirements.txt`. See
+[Starlette's test-client documentation](https://www.starlette.io/testclient/).
+
+This is a localhost learning service, **not a public deployment**: no authentication,
+TLS, rate limiting, persistent prediction logging, database, or delayed-outcome
+processing yet. Uvicorn prints ordinary request/error logs to the terminal; these
+are not model-monitoring records. Docker and deployment require separate approval.
 
 The broader roadmap and working agreement remain in [AGENTS.md](AGENTS.md).

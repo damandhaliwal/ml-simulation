@@ -3,6 +3,117 @@
 Newest entries first. Repository-local session capture and handoff, so the notes
 travel with the code; no global session log or unrelated history was modified.
 
+## 2026-09-03 18:12 EDT — Local prediction API
+
+Project: ml-simulation. Duration: brief conversation, bounded implementation.
+
+### Decisions
+
+- After reviewing the remaining roadmap, Daman approved the next local API step
+  only. Docker, cloud resources, database logging, live replay, and retraining
+  remain separate steps. The introductory update confirmed the normal Git
+  commit/push workflow for this step.
+- The prior interface's no-commit pause was resolved by explicit publication
+  approval; that interface is published in `6e8c0aa`. Old log entries preserve
+  their historical pre-approval state rather than being rewritten.
+- Reuse `validate_request` and `load_artifact` unchanged. Add a small FastAPI app
+  factory and foreground Uvicorn command, bound to `127.0.0.1` with one worker.
+- Load the explicitly selected trusted artifact once at startup. Do not train,
+  choose a default model silently, or reload the artifact per request. Restart
+  the service to load a changed artifact. Missing/corrupt/incompatible models
+  abort startup; health means a model is loaded, not that its accuracy is good.
+- Keep request/domain failures separate from inference failures: HTTP 422 for
+  invalid requests, 503 outside the loaded lifecycle, unexpected server errors
+  remain 500. Invalid request bodies are not echoed in error responses.
+
+### Implementation walkthrough
+
+- `code/serving/api.py`:
+  - `create_app(artifact_dir)` returns a FastAPI app without file loading at
+    import/construction time. Its `lifespan` loads `(model, metadata)` at startup
+    and clears the retained reference on shutdown.
+  - `loaded_artifact()` checks readiness and returns the in-memory pair.
+  - `invalid_body(...)` turns FastAPI body-validation failures into a simple
+    JSON error, avoiding raw/nonfinite input values in error serialization.
+  - `health()` returns readiness, the exact model SHA-256, and the synthetic flag.
+  - `predict(payload)` applies the shared validator and invokes the saved model;
+    the four response fields match the Python/CLI interface. It is synchronous
+    so FastAPI runs prediction off the async event loop.
+  - `main()` requires `--model-dir`, accepts a validated port, and starts one
+    localhost worker. Ctrl+C shuts it down. No daemon/background setup added.
+- Added `code/serving/__init__.py` and 12 API tests in `tests/test_api.py`.
+- Extended pinned requirements with the API/server/test client and dependencies.
+  Original model-package versions and the user's pre-existing XGBoost install
+  were preserved. No new modeling package or system dependency was installed.
+- Updated README, AGENTS, and handoff to reflect the actual API state and the
+  resolved interface publication pause. The session-capture skill keeps this
+  log and handoff repo-local; no global memories or old log entries were changed.
+
+### Dependency findings
+
+- The first install selected HTTPX; Starlette 1.6.0 warns that its test client now
+  expects HTTPX2. Replaced the newly installed HTTPX/HTTPCore with HTTPX2 2.12.0
+  and HTTPCore2 2.12.0, as documented by Starlette. The removed packages were
+  introduced only during this step and can be reinstalled if ever needed.
+- AnyIO 4.15.0 deprecates aliases still imported by Starlette 1.6.0. Pinned AnyIO
+  4.14.2 after inspecting the import failure; no warnings were suppressed and no
+  installed third-party source was patched. Both environment checks pass.
+- Direct entry points: FastAPI 0.141.1, Uvicorn 0.52.4, HTTPX2 2.12.0. All 25
+  required packages, including transitive dependencies, are pinned in requirements.
+
+### Checks and results
+
+```sh
+PYTHONPATH=code .venv/bin/python -W error -m unittest discover -s tests -q
+PYTHONPATH=code /private/tmp/eta-api-check.4Y7ZC9/venv/bin/python -W error -m unittest discover -s tests -q
+uv pip check --python .venv/bin/python
+uv pip check --python /private/tmp/eta-api-check.4Y7ZC9/venv/bin/python
+PYTHONPATH=code .venv/bin/python -W error -m serving.api \
+  --model-dir artifacts/eta_2026_jan_aug --port 8000
+curl --fail-with-body http://127.0.0.1:8000/health
+curl --fail-with-body http://127.0.0.1:8000/predict \
+  -H 'Content-Type: application/json' \
+  --data-binary @docs/prediction-request.example.json
+git diff --check
+```
+
+- 70 tests pass with warnings as errors in both environments. The fresh CPython
+  3.13.7 environment was created from `requirements.txt` only. Both dependency
+  consistency checks pass (project environment also retains existing XGBoost).
+- Tests verify one-time loading, startup/shutdown readiness, no fitting during
+  prediction, exact parity for 120 generated requests, invalid/malformed/nonfinite
+  input rejection, artifact failures, server-vs-client errors, and CLI binding.
+- A real Uvicorn listener served the full-data artifact: health 200, example
+  prediction 200 at 43.63 minutes, incomplete request 422, malformed JSON 422.
+  Local socket binding/calls required sandbox approval. The foreground process
+  was stopped cleanly with Ctrl+C; port 8000 has no remaining listener.
+- The clean environment also loads the actual full-data artifact and returns
+  the identical Python/CLI/API response. Dataset and original LightGBM/refit
+  source hashes match artifact metadata. Saved model SHA-256 remains
+  `29447c8ee3ac6ac62d0f72b61d43f24668d01ed62b7974266b9f7991d3ca5dcd`.
+- These checks verify serving behavior, not new model accuracy. No held-out
+  evaluation or full-data retraining was performed.
+
+### Sources used for implementation
+
+- [FastAPI lifespan and model loading](https://fastapi.tiangolo.com/advanced/events/)
+- [FastAPI lifecycle tests](https://fastapi.tiangolo.com/advanced/testing-events/)
+- [Starlette TestClient / HTTPX2](https://www.starlette.io/testclient/)
+
+### Open questions and follow-ups
+
+- [ ] Daman reviews the API behavior and local run commands.
+- [ ] Agree on Docker packaging and Linux artifact compatibility checks next.
+- [ ] Keep cloud deployment, authentication, costs, database/replay, and a later
+  untouched model-evaluation window as explicitly approved future steps.
+
+### Context
+
+This is a small unauthenticated localhost API, not a public production service.
+There is no traffic/load benchmark, TLS, rate limit, or durable prediction log.
+No server remains running. Use `git log -1`, `git status`, and the remote main
+commit to verify publication; do not infer readiness for Docker from passing tests.
+
 ## 2026-09-03 17:18 EDT — Validated local prediction interface (uncommitted)
 
 Project: ml-simulation. Duration: brief conversation, bounded implementation.

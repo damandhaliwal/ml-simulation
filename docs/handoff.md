@@ -2,17 +2,26 @@
 
 ## Session topic
 
-Implemented the approved validated local prediction interface; awaiting Daman's
-review. **Do not stage, commit, or push this step until he approves publication.**
-The saved full-data model is unchanged; there is no API or deployment.
+Implemented and verified the approved local FastAPI `/predict` and `/health`
+step. The earlier Python/CLI interface was published with explicit approval in
+`6e8c0aa`; the temporary review-before-commit pause for that step is resolved.
+The API step follows the recurring commit/push workflow. The saved full-data
+model is unchanged. Docker and cloud deployment have not started.
 The earlier [evaluation record](evaluation-2026-09-03.md) remains unchanged and
 describes the pre-refit model, not a held-out score for the new artifact.
 
 ## Key decisions
 
-- One strict JSON request -> validated confirmation-time features -> existing
-  artifact loader -> one duration prediction with order ID, model SHA-256, and
-  synthetic-data label. No new dependency or model fitting during prediction.
+- One strict JSON request -> existing confirmation-time validator -> loaded
+  model -> duration, order ID, model SHA-256, and synthetic-data label.
+- `create_app(artifact_dir)` constructs the API without loading the model. FastAPI
+  lifespan loads the trusted artifact once at startup and clears it on shutdown.
+  Fail startup on missing/corrupt/incompatible artifacts; never choose a fallback.
+- CLI binds only `127.0.0.1`, one worker. HTTP 422 for invalid request bodies/domain
+  values; 503 if called outside the loaded lifecycle; unexpected inference errors
+  stay 500. Health means loaded/readiness, not model quality.
+- Added FastAPI/Uvicorn/HTTPX2 and pinned dependencies to `requirements.txt`.
+  AnyIO 4.14.2 avoids Starlette 1.6.0's deprecated-alias warnings in 4.15.
 - Derive Toronto-local hour/day from the timestamp; reject extra fields,
   outcomes, unknown categories, invalid numeric types/ranges, and contradictory
   synthetic weather. No imputation, clipping, or unknown-category fallback at
@@ -26,16 +35,23 @@ describes the pre-refit model, not a held-out score for the new artifact.
   sidecar containing the feature contract, settings, counts, windows, and hashes.
 - Refuse existing output directories. Load only trusted artifacts and require
   compatible feature metadata, exact Python/package versions, checksum, and trees.
-- No new dependency, serving endpoint, replay, deployment, or infrastructure.
+- No full-data retraining, Docker, database, replay, deployment, or infrastructure.
 
 ## Verified state
 
-- 58 unit tests pass with `-W error` in both the project and fresh pinned environment
-  (15 new tests). Tests include subprocess CLI success/failure, no retraining,
-  feature parity, numeric validation, and Toronto date/year/DST boundaries.
+- 70 tests pass with `-W error` in both the project and fresh pinned environment
+  (12 new API tests). API tests cover startup/shutdown, one-time loading, parity
+  for 120 generated requests, request failures, missing/corrupt artifacts, runtime
+  compatibility, server errors, and localhost CLI settings.
+- `uv pip check` passes in both environments. Fresh verification environment:
+  `/private/tmp/eta-api-check.4Y7ZC9/venv` (temporary/local, not a runtime requirement).
+- Real HTTP smoke test of the full model: health 200, prediction 200 at 43.63
+  minutes, incomplete and malformed JSON 422. Foreground server stopped cleanly;
+  no listener remains on port 8000. The fresh environment also loads the full
+  saved artifact and matches the Python/CLI response exactly.
 - The example JSON produces 43.63 minutes in both environments, tagged with the
   saved model checksum. This is an example prediction, not a model-quality metric.
-- The request validator reproduces all 13 original model features exactly for
+- The previous interface audit reproduced all 13 original model features exactly for
   all 116,667 source rows, including cancellations with outcomes stripped away.
 - Artifact: `artifacts/eta_2026_jan_aug/model.joblib` (478,252 bytes), with
   `metadata.json` beside it. Both are intentionally local/Git-ignored.
@@ -51,21 +67,20 @@ describes the pre-refit model, not a held-out score for the new artifact.
 
 ## Open follow-ups
 
-- [ ] Daman reviews `code/models/predict_eta.py`, its tests, and the example request.
-- [ ] Commit/push only after explicit publication approval for this step.
-- [ ] Agree on any next serving/API step; no implementation or installation is
-  authorized yet. The local function reloads the artifact on each call.
+- [ ] Daman reviews the API step and run instructions in the README.
+- [ ] Agree on the Docker step: package this API/runtime with access to the model,
+  verify Linux loading/prediction parity, then stop before cloud deployment.
 - [ ] Agree on a later untouched evaluation window for the refitted model.
 
 ## Context for the next session
 
-This is a learning-first project with explicit approval per step. The usual
-commit/push workflow is paused for this interface change by Daman's request.
-Passing unit tests is not permission for another release or
+This is a learning-first project with explicit approval per step. Passing unit
+tests is not permission to begin Docker or another release, or
 proof of model quality. Preserve the recorded August results; do not call post-refit
 in-sample scores held-out performance. Use `models.refit_eta.load_artifact` to load
 the trusted model; Joblib can execute code, and checksums are not signatures.
-See the README's local prediction section for the contract and runnable example,
+See the README's local HTTP API section for commands and the response contract,
 and [session-log.md](session-log.md) for implementation details and checks.
-The latest published commit is still `a6bb835`; the interface is a working-tree
-change, not a published step. Check `git status` before any follow-up edits.
+Verify publication with `git log -1`, `git status`, and the remote main commit;
+the old session-log entry marked uncommitted describes the pre-approval snapshot.
+Do not expose this unauthenticated service publicly. No server is left running.
