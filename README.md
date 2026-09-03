@@ -1,8 +1,9 @@
 # Marketplace ETA Intelligence System
 
 Current stage: **synthetic data, chronological evaluation, three baselines,
-and a locally saved, full-data LightGBM ETA model**. Training and prediction are
-offline; no prediction API or deployment exists yet.
+and a locally saved, full-data LightGBM ETA model with a validated single-order
+prediction interface**. Training and prediction are offline; no prediction API
+or deployment exists yet.
 There are no queues, courier dispatch, event clocks, intermediate stages, or
 marketplace state. All data and measured model errors are simulated.
 
@@ -206,7 +207,8 @@ After fitting, predictions are compared exactly before and after loading on all
 113,079 training rows. The metadata sidecar is written only after this check.
 A failed save can leave an incomplete directory; it is not a successful artifact.
 
-Load our own trusted artifact from Python started with `PYTHONPATH=code`:
+For low-level inspection, load our own trusted artifact from Python started with
+`PYTHONPATH=code` (use the validated interface below for incoming requests):
 
 ```python
 from models.refit_eta import load_artifact
@@ -219,12 +221,83 @@ Joblib loading can execute code: **never load an untrusted artifact**, even if
 its checksum matches a supplied metadata file. The loader checks format, feature
 contract, exact Python/package versions, model checksum, fitted state, and tree
 count. Checksums detect accidental corruption; they are not signatures. Reuse the
-pinned environment. The unchanged unknown-category policy maps unknown zones or
-weather to -1; this is not a substitute for future request validation.
+pinned environment. The low-level model's unchanged fallback maps unknown zones
+or weather to -1; the new request interface rejects them before prediction.
 
 January–August is now training data. The recorded August results describe the
 earlier model, **not this refitted model**. No new held-out score is claimed; a
 later untouched window is needed to assess the refit. This is still synthetic
 learning work, not evidence of real-world delivery accuracy.
+
+## Local prediction interface
+
+The interface accepts **one JSON object**, validates it, loads the explicitly
+selected trusted artifact, and returns one duration prediction. It does not
+retrain, save predictions, start a server, or alter the artifact. Each call loads
+the model again; this small local interface is not a latency-optimized service.
+
+From the repository root, try the synthetic [example request](docs/prediction-request.example.json):
+
+```sh
+PYTHONPATH=code .venv/bin/python -W error -m models.predict_eta \
+  --model-dir artifacts/eta_2026_jan_aug \
+  --input docs/prediction-request.example.json
+```
+
+The current artifact returns:
+
+```json
+{
+  "order_id": "EXAMPLE-001",
+  "predicted_delivery_duration_minutes": 43.63,
+  "model_sha256": "29447c8ee3ac6ac62d0f72b61d43f24668d01ed62b7974266b9f7991d3ca5dcd",
+  "simulated": true
+}
+```
+
+This is a synthetic example prediction, not a measured delivery or an accuracy
+result. Duration is measured from confirmation; the existing 5-minute floor and
+2-decimal rounding are unchanged. The SHA-256 identifies the exact model binary,
+not the whole interface implementation or a trusted publisher.
+
+The request contains exactly the 13 fields shown in the example:
+
+- `order_id`: nonblank string, echoed back but not used as a model feature.
+- `confirmed_at`: timezone-aware ISO timestamp. The interface derives
+  `local_hour` and `day_of_week` in Toronto time, including daylight-saving changes.
+  Do not supply those two derived features yourself.
+- `distance_km` and `traffic_index`: positive, finite numbers.
+- `item_count`: integer >= 1. `restaurant_backlog`, `orders_waiting_for_courier`,
+  and `idle_couriers`: integers >= 0. JSON `2.0` is not an integer count here.
+- `temperature_c`: finite number. `precipitation_mm_per_hour`: finite and >= 0.
+- `pickup_zone_id` and `dropoff_zone_id`: `Z1`, `Z2`, or `Z3`.
+- `weather_type`: `clear`, `rain`, `snow`, or `storm`. Match the simulator's toy
+  rules: clear requires zero precipitation; the others require positive
+  precipitation. Snow requires temperature <= 0; rain/storm require > 0.
+
+There is no numeric string/boolean coercion, missing-value imputation, or clipping
+of request values. Missing and extra fields are errors, including outcomes,
+promised deadlines, and unused context fields from a full simulator row. To
+construct a request from a generated row, explicitly select `REQUEST_FIELDS`.
+The promise remains separate; no lateness probability or cancellation forecast
+is returned. A valid request is not proof of training-distribution coverage:
+no empirical upper-bound or out-of-distribution gate is implemented yet.
+
+The same boundary is available from Python:
+
+```python
+import json
+from pathlib import Path
+from models.predict_eta import predict_eta
+
+request = json.loads(Path("docs/prediction-request.example.json").read_text())
+result = predict_eta(request, "artifacts/eta_2026_jan_aug")
+```
+
+`validate_request(request)` returns the 13 model features without changing its
+input. `predict_eta(request, artifact_dir)` validates before loading and returns
+the response dictionary. The CLI prints JSON only on success; malformed request
+JSON, request validation failures, and ordinary file/compatibility errors exit
+with status 2 and an error on stderr. It never silently falls back to another model.
 
 The broader roadmap and working agreement remain in [AGENTS.md](AGENTS.md).

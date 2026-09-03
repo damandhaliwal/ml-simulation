@@ -1,0 +1,15 @@
+{
+  "order_id": "EXAMPLE-001",
+  "confirmed_at": "2026-09-03T18:00:00-04:00",
+  "distance_km": 2.5,
+  "item_count": 2,
+  "traffic_index": 1.5,
+  "restaurant_backlog": 3,
+  "orders_waiting_for_courier": 2,
+  "idle_couriers": 1,
+  "precipitation_mm_per_hour": 3,
+  "temperature_c": 18,
+  "pickup_zone_id": "Z1",
+  "dropoff_zone_id": "Z2",
+  "weather_type": "rain"
+}

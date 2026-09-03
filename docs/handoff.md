@@ -2,12 +2,21 @@
 
 ## Session topic
 
-Completed the approved full-data LightGBM refit and saved a verified local model.
+Implemented the approved validated local prediction interface; awaiting Daman's
+review. **Do not stage, commit, or push this step until he approves publication.**
+The saved full-data model is unchanged; there is no API or deployment.
 The earlier [evaluation record](evaluation-2026-09-03.md) remains unchanged and
 describes the pre-refit model, not a held-out score for the new artifact.
 
 ## Key decisions
 
+- One strict JSON request -> validated confirmation-time features -> existing
+  artifact loader -> one duration prediction with order ID, model SHA-256, and
+  synthetic-data label. No new dependency or model fitting during prediction.
+- Derive Toronto-local hour/day from the timestamp; reject extra fields,
+  outcomes, unknown categories, invalid numeric types/ranges, and contradictory
+  synthetic weather. No imputation, clipping, or unknown-category fallback at
+  this boundary. Existing training/model code remains unchanged.
 - Daman explicitly approved the refit/save/load step. Use all 113,079 delivered
   labels, including the 28 excluded from earlier snapshot evaluation. Exclude
   3,588 cancellations. Observe labels strictly before September 3 at 00:00 UTC.
@@ -21,7 +30,13 @@ describes the pre-refit model, not a held-out score for the new artifact.
 
 ## Verified state
 
-- 43 unit tests pass with `-W error` in both the project and fresh pinned environment.
+- 58 unit tests pass with `-W error` in both the project and fresh pinned environment
+  (15 new tests). Tests include subprocess CLI success/failure, no retraining,
+  feature parity, numeric validation, and Toronto date/year/DST boundaries.
+- The example JSON produces 43.63 minutes in both environments, tagged with the
+  saved model checksum. This is an example prediction, not a model-quality metric.
+- The request validator reproduces all 13 original model features exactly for
+  all 116,667 source rows, including cancellations with outcomes stripped away.
 - Artifact: `artifacts/eta_2026_jan_aug/model.joblib` (478,252 bytes), with
   `metadata.json` beside it. Both are intentionally local/Git-ignored.
 - Saved model SHA-256:
@@ -36,16 +51,21 @@ describes the pre-refit model, not a held-out score for the new artifact.
 
 ## Open follow-ups
 
-- [ ] Agree on the next small prediction-interface/input-validation step; no API
-  implementation or additional installation is authorized yet.
+- [ ] Daman reviews `code/models/predict_eta.py`, its tests, and the example request.
+- [ ] Commit/push only after explicit publication approval for this step.
+- [ ] Agree on any next serving/API step; no implementation or installation is
+  authorized yet. The local function reloads the artifact on each call.
 - [ ] Agree on a later untouched evaluation window for the refitted model.
 
 ## Context for the next session
 
-This is a learning-first project with explicit approval per step and commit/push
-after verification. Passing unit tests is not permission for another release or
+This is a learning-first project with explicit approval per step. The usual
+commit/push workflow is paused for this interface change by Daman's request.
+Passing unit tests is not permission for another release or
 proof of model quality. Preserve the recorded August results; do not call post-refit
 in-sample scores held-out performance. Use `models.refit_eta.load_artifact` to load
 the trusted model; Joblib can execute code, and checksums are not signatures.
-See [session-log.md](session-log.md) for implementation details and commands, and use `git log -1` plus
-`git ls-remote origin refs/heads/main` to check publication state.
+See the README's local prediction section for the contract and runnable example,
+and [session-log.md](session-log.md) for implementation details and checks.
+The latest published commit is still `a6bb835`; the interface is a working-tree
+change, not a published step. Check `git status` before any follow-up edits.

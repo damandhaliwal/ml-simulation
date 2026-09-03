@@ -21,8 +21,11 @@ keep the exact proximity cutoff explicit when implementing that rule.
 
 The implementation now includes the direct synthetic-data generator, label-aware
 chronological splits, three baselines, offline LightGBM evaluation, and a local
-full-data refit/save/load workflow. Daman approved the 160-tree refit on all observed
-delivered labels; see `docs/handoff.md` for the verified artifact and next decision.
+full-data refit/save/load workflow. The approved next step adds a validated local,
+single-order prediction interface; see `docs/handoff.md` for its review state.
+For this interface step, Daman explicitly requested review before committing:
+leave changes unstaged/uncommitted and do not push until he approves publication.
+This overrides the recurring publish workflow below for this step only.
 Generated model artifacts stay local and Git-ignored. No API or deployment has
 been approved as part of this step.
 Sample features and calculate outcomes with a simple formula. Workload and

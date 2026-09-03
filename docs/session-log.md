@@ -3,6 +3,89 @@
 Newest entries first. Repository-local session capture and handoff, so the notes
 travel with the code; no global session log or unrelated history was modified.
 
+## 2026-09-03 17:18 EDT — Validated local prediction interface (uncommitted)
+
+Project: ml-simulation. Duration: brief conversation, bounded implementation.
+
+### Decisions
+
+- Daman approved moving on to the local prediction interface and explicitly
+  requested **no commit after implementation** so he can review first. Leave
+  changes unstaged/uncommitted; do not push. This overrides automatic publishing
+  for this step and is recorded in AGENTS/handoff for the next session.
+- Accept one strict JSON object, not a batch or full simulator row. Return order
+  ID, predicted duration in minutes, exact model-file SHA-256, and `simulated`.
+- Derive Toronto-local hour/day from a timezone-aware confirmation timestamp.
+  Keep the remaining feature definitions, trained model, and preprocessing intact.
+- Reject missing/extra fields (including outcomes), unknown categories, boolean
+  or string numerics, nonfinite values, invalid counts/ranges, and contradictory
+  weather under the existing simulator rules. Do not invent empirical upper
+  limits or claim a valid request is in the training distribution.
+- Reuse the trusted artifact loader and existing dependencies. Each prediction
+  call reloads the artifact; no caching, endpoint, UI, logging store, replay,
+  deployment, full-data retraining, or new accuracy evaluation in this step.
+
+### Implementation walkthrough
+
+- `code/models/predict_eta.py`:
+  - `REQUEST_FIELDS` names the 13 request fields: ID, timestamp, and the 11
+    non-derived model inputs. `COUNT_MINIMUMS` records the four count constraints.
+  - `validate_request(request)` returns a fresh dictionary with all 13 model
+    features, deriving hour/day and excluding identifiers/timestamps from the
+    feature row. It leaves the input unchanged and raises field-specific errors.
+  - `predict_eta(request, artifact_dir)` validates before loading the model,
+    calls the existing predictor, and returns a response dictionary. No fit call.
+  - `main()` reads `--input` JSON and an explicit trusted `--model-dir`; stdout
+    contains only the JSON response on success. Ordinary input/file/compatibility
+    errors produce stderr and exit code 2, not a replacement prediction.
+- `docs/prediction-request.example.json` is a hand-authored synthetic example,
+  deliberately without outcomes. It is not a generated dataset or a real order.
+- `tests/test_predict_eta.py` adds 15 tests for validation, date/year/DST edges,
+  input immutability, loader invocation, response identity, no fit on prediction,
+  feature parity, and CLI success/failure. CLI integration tests fit only tiny
+  temporary fixtures; the saved full-data artifact is never overwritten.
+- README documents the exact contract, Python/CLI usage, and limitations.
+  The session-capture skill keeps this log/handoff repository-local; no global
+  memory, session archives, or unrelated HTML exports were changed.
+
+### Checks and results
+
+```sh
+PYTHONPATH=code .venv/bin/python -W error -m unittest discover -s tests -v
+PYTHONPATH=code /private/tmp/eta-review-env.xmKqa0/venv/bin/python -W error -m unittest discover -s tests -q
+PYTHONPATH=code .venv/bin/python -W error -m models.predict_eta \
+  --model-dir artifacts/eta_2026_jan_aug \
+  --input docs/prediction-request.example.json
+git diff --check
+```
+
+- 58 tests pass in each environment, with warnings treated as errors.
+- The CLI also runs in the fresh pinned environment; both return 43.63 minutes
+  for `EXAMPLE-001`, with the unchanged model SHA-256
+  `29447c8ee3ac6ac62d0f72b61d43f24668d01ed62b7974266b9f7991d3ca5dcd`.
+- Full-corpus compatibility audit: select `REQUEST_FIELDS` from every one of
+  the 116,667 raw orders, run `validate_request`, and compare the resulting
+  dictionary to the original `ALL_FEATURES`. Every value matches, including
+  calendar derivations. Cancellation outcomes are not sent to the interface.
+- Source dataset, model, and existing LightGBM/refit implementation checksums
+  match the saved metadata. No full model refit or saved artifact changes.
+- These are software/feature-parity checks, not evidence of predictive accuracy.
+  The old August MAE still belongs only to the pre-refit model.
+
+### Artifacts and publication state
+
+- New: `code/models/predict_eta.py`, `tests/test_predict_eta.py`, and the JSON example.
+- Updated: README, AGENTS, handoff, and this log. No dependencies changed.
+- All interface work remains unstaged/uncommitted. Latest published commit is
+  still `a6bb835`; no commit or push was attempted during this step.
+
+### Open questions and follow-ups
+
+- [ ] Daman reviews the implementation and request/response contract.
+- [ ] Publish only after his explicit approval.
+- [ ] Agree on any subsequent API/serving step and a later untouched evaluation
+  window; neither is implemented or authorized by passing these tests.
+
 ## 2026-09-03 17:01 EDT — Full-data refit and local model artifact
 
 Project: ml-simulation. Duration: brief conversation, bounded implementation.
