@@ -35,6 +35,12 @@ Docker packaging. Keep the model outside the image, mounted read-only, and publi
 the host port only on `127.0.0.1`. Future Docker/infrastructure work remains
 learning-first; do not take over implementation without explicit approval.
 Cloud deployment, database logging, and live replay remain separate future steps.
+The budget is a hard $0. The goal remains demonstrating production-grade ML
+engineering through a locally tested, synthetic production-style system; cloud
+hosting is optional and currently deferred. Do not enable billing or provision
+resources based on a free-tier assumption. Daman approved defining the local
+prediction/outcome logging contract, not implementing persistence or replay yet.
+See `docs/prediction-logging.md` for the design draft and unresolved decisions.
 See `docs/handoff.md` for verification evidence and the next decision.
 Sample features and calculate outcomes with a simple formula. Workload and
 courier counts are sampled context, not reconstructed state.
@@ -136,8 +142,8 @@ moment, target, available inputs, promised deadline, metrics, and non-goals.
 - **v0.1:** Inspectable simulator, chronological dataset, baselines, ETA model.
 - **v0.2:** Reproducible command-line training, validation, and broader tests.
 - **v0.3:** FastAPI `/predict` and `/health`, request validation, Docker.
-- **v0.4:** Cloud deployment, PostgreSQL, prediction logging, live simulation
-  through the API, and delayed outcomes.
+- **v0.4:** Local PostgreSQL, prediction logging, live simulation through the API,
+  and delayed outcomes. Cloud deployment is optional/deferred under the $0 budget.
 - **v0.5:** Operational and model monitoring, deliberate regime shifts, drift
   detection, and explicit alerts.
 - **v1.0:** Retraining, versioned models, challenger evaluation, promotion,

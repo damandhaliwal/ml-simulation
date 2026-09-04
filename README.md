@@ -4,12 +4,19 @@ Current stage: **synthetic data, chronological evaluation, three baselines,
 and a locally saved, full-data LightGBM ETA model with validated Python/CLI and
 local HTTP prediction interfaces**. Training is offline; the API defaults to
 localhost. Local Linux ARM64 Docker serving has passed user-run smoke checks;
-cloud deployment has not started. See the handoff for the evidence and limitations.
+cloud deployment is deferred under a hard **$0 budget**. The goal is to demonstrate
+production-grade ML engineering locally, not claim a live production deployment.
+See the handoff for the evidence and limitations.
 There are no queues, courier dispatch, event clocks, intermediate stages, or
 marketplace state. All data and measured model errors are simulated.
 
 For the latest decisions, verified results, and next step, see
 [the handoff](docs/handoff.md) and [session log](docs/session-log.md).
+
+Next design step: [prediction/outcome logging contract](docs/prediction-logging.md).
+This is a draft for review; persistence, database services, and replay are not
+implemented. It separates immutable predictions from delayed outcomes and flags
+retry behavior and missing cancellation timing before implementation.
 
 ## Generator: two functions
 

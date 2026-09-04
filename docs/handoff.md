@@ -1,20 +1,33 @@
-# Handoff — September 3, 2026
+# Handoff — September 4, 2026
 
 ## Session topic
 
-Closed out Daman's user-built local Docker API packaging after its serving smoke
-checks passed. Daman explicitly approved documenting and committing/pushing the
-reviewed Dockerfile and ignore file. The API host option is published in `c7c880b`,
-the original API in `8f1159f`, and Python/CLI interface in `6e8c0aa`.
-Codex reviewed files, reran Python tests, inspected image metadata/container
-removal read-only, and prepared the closeout; it did not rebuild or start a service.
-The saved full-data model is unchanged. Cloud deployment is a separate next
-planning decision, not authorized implementation.
+Drafted the [local prediction/outcome logging contract](prediction-logging.md)
+after Daman approved defining records and matching rules before persistence.
+The goal is production-grade ML skills with a hard $0 budget, not merely another
+offline score. Cloud Run was discussed, then deferred; no cloud resources were
+created. This step changes documentation only: no database, dependency, API,
+Docker, simulator, dataset, or saved-model changes; no services started.
+
+The prior Docker closeout is published in `79d3ddf`, the API host option in
+`c7c880b`, the original API in `8f1159f`, and Python/CLI interface in `6e8c0aa`.
+The Docker evidence and earlier test timings below are historical; current
+documentation-step checks are recorded separately here.
 The earlier [evaluation record](evaluation-2026-09-03.md) remains unchanged and
 describes the pre-refit model, not a held-out score for the new artifact.
 
 ## Key decisions
 
+- Hard $0 budget; retain the operational ML roadmap locally. No paid service,
+  billing enablement, or cloud provisioning based on anticipated free-tier usage.
+- Logging is a design draft, not implemented behavior. Proposed records are run
+  context, one immutable prediction per `(run_id, order_id)`, and a separately
+  observed terminal outcome. Run IDs avoid collisions across generator batches.
+- Review proposed first-write-wins retries and commit-before-success behavior
+  before implementation. Distinguish model timing, HTTP attempts, wall-clock
+  recording time, and simulated outcome availability.
+- No cancellation timestamp exists in the source. Cancellation observation policy
+  remains unresolved; never invent a time or infer cancellation from missing labels.
 - One strict JSON request -> existing confirmation-time validator -> loaded
   model -> duration, order ID, model SHA-256, and synthetic-data label.
 - `create_app(artifact_dir)` constructs the API without loading the model. FastAPI
@@ -48,7 +61,21 @@ describes the pre-refit model, not a held-out score for the new artifact.
   compatible feature metadata, exact Python/package versions, checksum, and trees.
 - No full-data retraining, database, replay, cloud deployment, or infrastructure.
 
-## Docker smoke evidence and current closeout checks
+## Current documentation-step checks
+
+- All 70 existing tests pass with warnings treated as errors in the project
+  environment: `PYTHONPATH=code .venv/bin/python -W error -m unittest discover -s tests -q`
+  (4.157 seconds). No new persistence/replay tests exist yet.
+- A focused in-memory check confirms the existing example has exactly 13 request
+  fields, validation produces the 13 artifact-contract features, and Toronto
+  hour/day derivation agrees. Neither request nor feature snapshot contains labels.
+- A single in-memory cancellation fixture confirms null delivery labels and no
+  `cancelled_at`; the illustrative -6.37-minute error was checked arithmetically.
+  No new evaluation dataset, replay, or model-quality result was produced.
+- Model and metadata checksums match the prior recorded artifacts. No runtime
+  code, dependencies, packaging, data, or models changed. `git diff --check` passes.
+
+## Prior Docker smoke evidence and closeout checks
 
 - Daman built and ran the image. His pasted output confirms Linux ARM64,
   non-root configuration, compatible installed dependencies, and API imports with
@@ -124,9 +151,14 @@ describes the pre-refit model, not a held-out score for the new artifact.
 
 - [x] Daman reviewed the host option and implemented the Docker startup command.
 - [x] Local serving smoke checks and container removal completed with the evidence above.
-- [ ] Propose a bounded cloud deployment plan covering host/architecture, access
-  control, artifact delivery, and costs; wait for approval before provisioning.
+- [x] Define a reviewable local logging contract and record the $0 budget.
+- [ ] Daman reviews the draft, especially retry/durability semantics.
+- [ ] Agree on the first local persistence implementation step and its checks;
+  PostgreSQL remains the roadmap option, not an installed service.
+- [ ] Decide non-feature run context and operational attempt logging before API
+  integration; agree cancellation availability before terminal-outcome replay.
 - [ ] Agree on a later untouched evaluation window for the refitted model.
+- Cloud deployment is deferred, not a prerequisite for these local steps.
 
 ## Context for the next session
 
@@ -138,8 +170,9 @@ the trusted model; Joblib can execute code, and checksums are not signatures.
 See the README's local HTTP API section for commands and the response contract,
 and [session-log.md](session-log.md) for implementation details and checks.
 Verify publication with `git log -1`, `git status`, and
-`git ls-remote origin refs/heads/main`. The commit containing this Docker closeout
+`git ls-remote origin refs/heads/main`. The commit containing this logging design
 must match remote main; old session entries preserve their pre-approval state.
-The README now includes Docker build/run/check/stop commands. No `eta-api`
-container remains. Do not expose this unauthenticated service publicly or infer
-permission to deploy from the completed local checks.
+The README includes Docker build/run/check/stop commands. At the previous Docker
+closeout no `eta-api` container remained; that state was not rechecked in this
+documentation step. Do not expose this unauthenticated service publicly or infer
+permission to implement persistence/replay from a completed design draft.

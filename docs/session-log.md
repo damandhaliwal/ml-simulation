@@ -3,6 +3,50 @@
 Newest entries first. Repository-local session capture and handoff, so the notes
 travel with the code; no global session log or unrelated history was modified.
 
+## 2026-09-04 12:22 EDT — Local logging contract and zero-dollar scope
+
+### Decisions and scope
+
+- Daman clarified a hard $0 budget and the goal of demonstrating production-grade
+  ML skills. Cloud Run was discussed but no cloud resources were created; cloud
+  deployment is deferred, not a prerequisite for operational ML testing locally.
+- Daman approved continuing with the proposed prediction/outcome logging contract
+  before implementing persistence. This is a documentation-only design draft for
+  review, not approval to install PostgreSQL, change the API, or start replay.
+- Added [prediction-logging.md](prediction-logging.md), linked it from README,
+  and updated AGENTS/handoff to keep the current goal, budget, and next step clear.
+
+### Proposed behavior and open decisions
+
+- Retain run provenance, immutable confirmation-time predictions, and separately
+  observed outcomes. Join on `(run_id, order_id)`; retries must not multiply orders.
+- Proposed first-write-wins idempotency and commit-before-success mean a storage
+  failure would produce an explicit API error. Review this availability/auditability
+  tradeoff before implementation; today's API has no persistence.
+- Separate intended confirmation time, actual replay prediction time, simulated
+  outcome availability/observation, wall-clock recording, and model-call timing.
+  Failed attempts and HTTP timing need operational logs, not fake prediction rows.
+- The generator has no cancellation timestamp. A cancellation observation policy
+  must be agreed before terminal-outcome replay; none was invented in the draft.
+- Local storage setup, non-feature run/time context, attempt telemetry, a later
+  evaluation window, and cancellation timing remain separate approval decisions.
+
+### Verification and boundaries
+
+- `PYTHONPATH=code .venv/bin/python -W error -m unittest discover -s tests -q`:
+  70 existing tests pass in 4.157 seconds. This is a current macOS regression run,
+  not evidence that the proposed logging/replay behavior is implemented.
+- Focused in-memory source checks: 13 request fields, 13 model features, correct
+  Toronto-local derivation, no labels in either input snapshot, null cancellation
+  labels/no `cancelled_at`, and the illustrative 43.63 - 50 = -6.37 error.
+- `shasum -a 256` confirms the model and metadata retain the prior recorded hashes;
+  `git diff --check` passes. No new evaluation dataset or full-data training run.
+- Only documentation is published under the standing commit/push agreement.
+  No runtime, dependency, Docker, database, or service changes; unrelated untracked
+  `AGENTS.html` / `AGENTS_files/` remain untouched. Old log entries are historical.
+- Next: Daman reviews the draft and approves one local persistence step. Do not
+  treat publishing this design as acceptance of every proposed behavior.
+
 ## 2026-09-03 23:04 EDT — Local Docker API closeout
 
 Project: ml-simulation. Duration: extended user-led Docker learning session.
