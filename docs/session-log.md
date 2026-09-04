@@ -3,6 +3,62 @@
 Newest entries first. Repository-local session capture and handoff, so the notes
 travel with the code; no global session log or unrelated history was modified.
 
+## 2026-09-04 16:44 EDT — Local PostgreSQL persistence test and security correction handoff
+
+Project: ml-simulation. Duration: extended user-led setup and verification.
+
+### Decisions
+
+- Retain the hard $0 budget and demonstrate database operations locally. Daman
+  performed the hands-on Compose commands; Codex reviewed configuration, supplied
+  bounded instructions, independently inspected non-secret runtime state, and did
+  not create/delete containers, networks, volumes, schemas, roles, or rows.
+- Use the pinned official PostgreSQL 17.11 Bookworm multi-platform digest, a named
+  local volume, health check, and host binding only on `127.0.0.1:5432`. Keep real
+  credentials in ignored mode-600 `.env`; publish only placeholders.
+- The persistence probe was temporary and is now removed. The service and named
+  volume stay running for the next corrective step.
+- Do not publish the current `eta_app` bootstrap identity as an application role.
+  Official image semantics and live `rolsuper = true` show that it is a superuser.
+  Rename the bootstrap identity to `eta_admin` through a reviewed empty-volume
+  reset, then create a separate least-privileged `eta_app` in a later schema step.
+
+### Completed evidence
+
+- User-pasted: ignore check/modes and untracked-file status; quiet Compose validation
+  and exact image resolution; 163.6-second image pull; healthy startup after 5.8
+  seconds; `eta`/`eta_app` TCP/password connection on PostgreSQL 17.11/aarch64;
+  transactional probe creation/row; `DROP SCHEMA` cascade limited to the probe;
+  and a final `t` check that the verification schema is absent.
+- User-reported as expected, without pasted output: `docker compose down` removed
+  the container/network but retained `eta_postgres_data`; recreation reattached it;
+  the stored row remained `1|survives restart` without reinsertion.
+- Codex independently inspected Linux ARM64, the immutable image ID, healthy status,
+  writable named volume, localhost-only port, and final catalog result
+  `eta|eta_app|t|t|0`: intended database/user, superuser true, verification schema
+  absent, and zero non-system tables. Compose validation still passes.
+
+### Open question and follow-ups
+
+- [ ] Daman follows the exact AGENTS correction sequence: edit ignored/template
+  admin names, map them to the image variables, validate without printing secrets,
+  destroy the verified-empty volume, recreate it, and verify `eta_admin`.
+- [ ] Review and publish corrected `.env.example` / `compose.yaml` plus documentation.
+- [ ] Separately design the first migration and non-superuser `eta_app` permissions.
+- [ ] Continue later with API-side prediction persistence, outcome replay, and the
+  untouched evaluation window; none is implemented or authorized by this setup.
+
+### Artifacts and context
+
+- Daman created untracked `.env.example` and `compose.yaml`; Codex did not edit
+  them. Unrelated HTML exports remain untouched; `.env` stays ignored and secret.
+- Modified only AGENTS and the repository-local session/handoff documents to record
+  completed versus reported evidence and the exact correction. No entry older than
+  60 days exists, so nothing was pruned. This documentation does not assert that
+  the pending administrator rename, reset, least-privilege role, or logging exists.
+- The next session should begin at the AGENTS **Current handoff** section and stop
+  after the corrected administrator/empty database is independently verified.
+
 ## 2026-09-04 12:22 EDT — Local logging contract and zero-dollar scope
 
 ### Decisions and scope

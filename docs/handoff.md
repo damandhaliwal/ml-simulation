@@ -2,12 +2,17 @@
 
 ## Session topic
 
-Defined and received Daman's approval of the
-[local prediction/outcome logging contract](prediction-logging.md).
-The goal is production-grade ML skills with a hard $0 budget, not merely another
-offline score. Cloud Run was discussed, then deferred; no cloud resources were
-created. This step changes documentation only: no database, dependency, API,
-Docker, simulator, dataset, or saved-model changes; no services started.
+Completed a user-led local PostgreSQL startup/authentication/persistence/cleanup
+exercise, then found that the bootstrap `eta_app` is a superuser. Daman asked for
+completed and next steps to be captured in AGENTS for handoff. The full evidence
+and exact recovery sequence are in `AGENTS.md` under **Current handoff: local
+PostgreSQL bootstrap correction**. The role correction and volume reset are not
+yet complete; do not commit the current untracked Compose files.
+
+The goal remains production-grade ML skills with a hard $0 budget. Cloud Run was
+discussed and deferred; no cloud resources or paid services were created. The
+accepted [local prediction/outcome logging contract](prediction-logging.md) is
+still a design: there is no logger, application schema, driver, or API integration.
 
 The prior Docker closeout is published in `79d3ddf`, the API host option in
 `c7c880b`, the original API in `8f1159f`, and Python/CLI interface in `6e8c0aa`.
@@ -18,6 +23,17 @@ describes the pre-refit model, not a held-out score for the new artifact.
 
 ## Key decisions
 
+- Run PostgreSQL 17.11 Bookworm locally through Docker Compose with an immutable
+  image digest, named volume, health check, and `127.0.0.1:5432` host binding.
+- `.env` stays ignored/mode `600`; `.env.example` contains placeholders only.
+  Never print resolved Compose configuration because it can expose the password.
+- The persistence probe survived a reported container removal/recreation, then was
+  removed. Codex independently confirmed no verification schema and zero user
+  tables. PostgreSQL remains healthy and running with its volume retained.
+- The official image makes `POSTGRES_USER` a superuser. Live inspection confirms
+  `eta_app` currently has `rolsuper = true`; it must become an explicitly named
+  bootstrap administrator before these untracked files are published. A later,
+  separate step creates a different least-privileged API role.
 - Hard $0 budget; retain the operational ML roadmap locally. No paid service,
   billing enablement, or cloud provisioning based on anticipated free-tier usage.
 - Logging is an accepted design, not implemented behavior. Its records are run
@@ -59,9 +75,32 @@ describes the pre-refit model, not a held-out score for the new artifact.
   sidecar containing the feature contract, settings, counts, windows, and hashes.
 - Refuse existing output directories. Load only trusted artifacts and require
   compatible feature metadata, exact Python/package versions, checksum, and trees.
-- No full-data retraining, database, replay, cloud deployment, or infrastructure.
+- No full-data retraining, application database integration, replay, cloud
+  deployment, or remote infrastructure. The local PostgreSQL service is the only
+  database infrastructure currently running.
 
-## Current documentation-step checks
+## Current PostgreSQL evidence
+
+- User-pasted: `.env` ignored; Compose validation and pinned image; first healthy
+  startup; authenticated TCP result `eta|eta_app|PostgreSQL 17.11 ... aarch64`;
+  transactional probe insert; probe-schema cleanup and final `t` absence check.
+- User-reported without pasted output: after `docker compose down` (without
+  `--volumes`), the container was absent and named volume remained; after restart,
+  the probe row still read `1|survives restart`.
+- Independently checked by Codex: Compose v5.5.0; exact `.env.example`/Compose
+  contents and modes; Linux ARM64 pinned image; healthy container; writable
+  `eta_postgres_data`; `127.0.0.1:5432`; and final result
+  `eta|eta_app|t|t|0` (database, user, superuser, verification absent, user tables).
+- Security source: the
+  [official PostgreSQL image documentation](https://github.com/docker-library/docs/blob/master/postgres/README.md?plain=1)
+  states that `POSTGRES_USER` creates a role with superuser power and bootstrap
+  variables only apply to an empty data directory. The reset is therefore
+  required, not cosmetic.
+- Current untracked project work: `.env.example` and `compose.yaml`; unrelated
+  `AGENTS.html` / `AGENTS_files/` remain untouched. `.env` is ignored. No database
+  application dependency, schema, API change, model change, or new evaluation.
+
+## Prior documentation-step checks
 
 - All 70 existing tests pass with warnings treated as errors in the project
   environment: `PYTHONPATH=code .venv/bin/python -W error -m unittest discover -s tests -q`
@@ -153,8 +192,12 @@ describes the pre-refit model, not a held-out score for the new artifact.
 - [x] Local serving smoke checks and container removal completed with the evidence above.
 - [x] Define a reviewable local logging contract and record the $0 budget.
 - [x] Daman reviewed and accepted the retry/durability semantics.
-- [ ] Agree on the first local persistence implementation step and its checks;
-  PostgreSQL remains the roadmap option, not an installed service.
+- [x] Start/authenticate local PostgreSQL and test named-volume persistence.
+- [x] Remove the temporary persistence probe and independently verify zero user tables.
+- [ ] Rename the bootstrap superuser to `eta_admin`, reset the verified-empty named
+  volume, recreate/verify it, then review before publishing Compose files.
+- [ ] In a separate step, create a distinct least-privileged `eta_app` login and
+  the first migration; never give the API the administrator credential.
 - [ ] Decide non-feature run context and operational attempt logging before API
   integration; agree cancellation availability before terminal-outcome replay.
 - [ ] Agree on a later untouched evaluation window for the refitted model.
@@ -172,7 +215,7 @@ and [session-log.md](session-log.md) for implementation details and checks.
 Verify publication with `git log -1`, `git status`, and
 `git ls-remote origin refs/heads/main`. The commit containing this logging design
 must match remote main; old session entries preserve their pre-approval state.
-The README includes Docker build/run/check/stop commands. At the previous Docker
-closeout no `eta-api` container remained; that state was not rechecked in this
-documentation step. Do not expose this unauthenticated service publicly or infer
-permission to implement persistence/replay from the accepted design.
+The current PostgreSQL service is intentionally local and running. Follow the
+AGENTS correction steps next. Do not expose either service publicly, publish the
+misnamed superuser setup, delete the named volume before reviewing the edits, or
+infer permission to implement persistence/replay from the accepted design.

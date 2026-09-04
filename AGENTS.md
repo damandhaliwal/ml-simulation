@@ -49,6 +49,81 @@ Do not reintroduce marketplace objects, queues, dispatch, event clocks, intermed
 stages, or route histories. Batching is only a sampled nearby-detour effect.
 Live replay and delayed outcome handling are separate, later steps.
 
+## Current handoff: local PostgreSQL bootstrap correction
+
+### Completed on September 4, 2026
+
+- Daman created a real `.env` with mode `600`; Git confirms `.gitignore:2:.env`
+  excludes it. Never print, read back, stage, or commit its password.
+- Daman created untracked `.env.example` and `compose.yaml`. The template contains
+  only `POSTGRES_DB=eta`, `POSTGRES_USER=eta_app`, and a placeholder password.
+  Compose v5.5.0 validates the file and resolves the pinned official multi-platform
+  image `postgres:17.11-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0`.
+- Daman pulled and started the image. His pasted output shows creation of
+  `eta-local_default`, `eta_postgres_data`, and a healthy
+  `eta-local-postgres-1`. Codex independently verified Linux ARM64, the pinned
+  image ID, writable named volume, and host binding only on `127.0.0.1:5432`.
+- Daman's pasted TCP/password query connected to database `eta` as `eta_app` on
+  PostgreSQL 17.11/aarch64. The TCP test matters because the official image trusts
+  local Unix-socket connections inside the container.
+- Daman created one transactional `verification.persistence_probe` row, then ran
+  `docker compose down` without `--volumes`. He reported the empty container list,
+  retained volume, successful recreation, and surviving row as expected; those
+  intermediate outputs were not pasted or independently captured.
+- Daman pasted successful removal of the temporary schema (`DROP SCHEMA`, cascading
+  only to `verification.persistence_probe`) and a `t` absence check. Codex then
+  independently confirmed database/user `eta|eta_app`, no `verification` schema,
+  zero user tables, a healthy service, the pinned image, writable named volume,
+  and localhost-only port. PostgreSQL remains running; its persistent volume and
+  downloaded image remain intentionally local. No model/API/schema integration,
+  cloud resource, or paid service was added.
+
+### Security issue found before publication
+
+The current Compose files use `POSTGRES_USER=eta_app`. The official image creates
+that bootstrap user with superuser power, and Codex independently observed
+`rolsuper = true`. This is an administrator mislabeled as an application account.
+Do not commit the current `.env.example`/`compose.yaml`, connect the API with these
+credentials, or describe least privilege as complete. The official image also
+applies bootstrap environment variables only when its data directory is empty.
+
+### Next steps — approved to document, not yet completed
+
+1. In the ignored `.env`, preserve the existing secret value but replace the three
+   names with `POSTGRES_DB=eta`, `POSTGRES_ADMIN_USER=eta_admin`, and
+   `POSTGRES_ADMIN_PASSWORD=<existing secret>`. Do not paste the secret into chat.
+2. Make `.env.example` use the same admin variable names and the placeholder
+   `replace-with-a-local-admin-password`.
+3. In `compose.yaml`, map the explicit admin variables to the image's required
+   bootstrap names:
+
+   ```yaml
+   environment:
+     POSTGRES_DB: "${POSTGRES_DB:?set POSTGRES_DB in .env}"
+     POSTGRES_USER: "${POSTGRES_ADMIN_USER:?set POSTGRES_ADMIN_USER in .env}"
+     POSTGRES_PASSWORD: "${POSTGRES_ADMIN_PASSWORD:?set POSTGRES_ADMIN_PASSWORD in .env}"
+   ```
+
+   Keep the health check unchanged: it correctly reads the resulting container
+   variables `POSTGRES_USER` and `POSTGRES_DB` via escaped `$${...}` expressions.
+4. Run `docker compose config --quiet` and `docker compose config --images`. Never
+   print plain `docker compose config`, which can reveal the resolved password.
+5. Only after reviewing the edits, run `docker compose down --volumes`. This
+   irreversibly removes the current `eta_postgres_data`, but Codex verified it has
+   zero user tables and the probe is gone. Do not remove the downloaded image.
+6. Confirm `docker volume inspect eta_postgres_data` reports no such volume, then
+   recreate it with
+   `docker compose up --detach --wait --wait-timeout 60 postgres`.
+7. Through TCP/password authentication, verify database `eta`, user `eta_admin`,
+   PostgreSQL 17.11, and intentional `rolsuper = true`; independently confirm a
+   healthy service, localhost port, attached volume, no `verification` schema, and
+   zero user tables. Stop for Daman's review before documenting/committing the
+   corrected Compose files.
+8. In a separate approved schema step, create a non-superuser `eta_app` login with
+   a different local secret and only the permissions needed by the prediction
+   logger. The API must never receive the `eta_admin` credential. Do not add the
+   role, migrations, driver, API integration, or logging tables during this fix.
+
 ## Working agreement: one small step at a time
 
 1. **Propose:** State one small objective, why it matters, which files would
