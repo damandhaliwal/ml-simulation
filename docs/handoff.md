@@ -2,8 +2,8 @@
 
 ## Session topic
 
-Drafted the [local prediction/outcome logging contract](prediction-logging.md)
-after Daman approved defining records and matching rules before persistence.
+Defined and received Daman's approval of the
+[local prediction/outcome logging contract](prediction-logging.md).
 The goal is production-grade ML skills with a hard $0 budget, not merely another
 offline score. Cloud Run was discussed, then deferred; no cloud resources were
 created. This step changes documentation only: no database, dependency, API,
@@ -20,11 +20,11 @@ describes the pre-refit model, not a held-out score for the new artifact.
 
 - Hard $0 budget; retain the operational ML roadmap locally. No paid service,
   billing enablement, or cloud provisioning based on anticipated free-tier usage.
-- Logging is a design draft, not implemented behavior. Proposed records are run
+- Logging is an accepted design, not implemented behavior. Its records are run
   context, one immutable prediction per `(run_id, order_id)`, and a separately
   observed terminal outcome. Run IDs avoid collisions across generator batches.
-- Review proposed first-write-wins retries and commit-before-success behavior
-  before implementation. Distinguish model timing, HTTP attempts, wall-clock
+- Daman accepted first-write-wins retries and commit-before-success behavior.
+  Distinguish model timing, HTTP attempts, wall-clock
   recording time, and simulated outcome availability.
 - No cancellation timestamp exists in the source. Cancellation observation policy
   remains unresolved; never invent a time or infer cancellation from missing labels.
@@ -152,7 +152,7 @@ describes the pre-refit model, not a held-out score for the new artifact.
 - [x] Daman reviewed the host option and implemented the Docker startup command.
 - [x] Local serving smoke checks and container removal completed with the evidence above.
 - [x] Define a reviewable local logging contract and record the $0 budget.
-- [ ] Daman reviews the draft, especially retry/durability semantics.
+- [x] Daman reviewed and accepted the retry/durability semantics.
 - [ ] Agree on the first local persistence implementation step and its checks;
   PostgreSQL remains the roadmap option, not an installed service.
 - [ ] Decide non-feature run context and operational attempt logging before API
@@ -175,4 +175,4 @@ must match remote main; old session entries preserve their pre-approval state.
 The README includes Docker build/run/check/stop commands. At the previous Docker
 closeout no `eta-api` container remained; that state was not rechecked in this
 documentation step. Do not expose this unauthenticated service publicly or infer
-permission to implement persistence/replay from a completed design draft.
+permission to implement persistence/replay from the accepted design.

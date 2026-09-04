@@ -13,6 +13,9 @@ travel with the code; no global session log or unrelated history was modified.
 - Daman approved continuing with the proposed prediction/outcome logging contract
   before implementing persistence. This is a documentation-only design draft for
   review, not approval to install PostgreSQL, change the API, or start replay.
+- After reviewing the summary, Daman accepted the contract, including the
+  save-before-success and first-write-wins behavior. This accepts the design only;
+  persistence and replay still require a separate approved step.
 - Added [prediction-logging.md](prediction-logging.md), linked it from README,
   and updated AGENTS/handoff to keep the current goal, budget, and next step clear.
 
@@ -20,9 +23,8 @@ travel with the code; no global session log or unrelated history was modified.
 
 - Retain run provenance, immutable confirmation-time predictions, and separately
   observed outcomes. Join on `(run_id, order_id)`; retries must not multiply orders.
-- Proposed first-write-wins idempotency and commit-before-success mean a storage
-  failure would produce an explicit API error. Review this availability/auditability
-  tradeoff before implementation; today's API has no persistence.
+- Accepted first-write-wins idempotency and commit-before-success mean a storage
+  failure would produce an explicit API error. Today's API has no persistence.
 - Separate intended confirmation time, actual replay prediction time, simulated
   outcome availability/observation, wall-clock recording, and model-call timing.
   Failed attempts and HTTP timing need operational logs, not fake prediction rows.
@@ -44,8 +46,8 @@ travel with the code; no global session log or unrelated history was modified.
 - Only documentation is published under the standing commit/push agreement.
   No runtime, dependency, Docker, database, or service changes; unrelated untracked
   `AGENTS.html` / `AGENTS_files/` remain untouched. Old log entries are historical.
-- Next: Daman reviews the draft and approves one local persistence step. Do not
-  treat publishing this design as acceptance of every proposed behavior.
+- Daman accepted the design. Next: propose one local persistence implementation
+  step; do not begin it based only on design acceptance.
 
 ## 2026-09-03 23:04 EDT — Local Docker API closeout
 

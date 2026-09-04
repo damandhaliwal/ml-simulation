@@ -38,9 +38,10 @@ Cloud deployment, database logging, and live replay remain separate future steps
 The budget is a hard $0. The goal remains demonstrating production-grade ML
 engineering through a locally tested, synthetic production-style system; cloud
 hosting is optional and currently deferred. Do not enable billing or provision
-resources based on a free-tier assumption. Daman approved defining the local
-prediction/outcome logging contract, not implementing persistence or replay yet.
-See `docs/prediction-logging.md` for the design draft and unresolved decisions.
+resources based on a free-tier assumption. Daman accepted the local
+prediction/outcome logging contract, including its retry and durability behavior,
+but has not approved implementing persistence or replay yet. See
+`docs/prediction-logging.md` for the accepted design and unresolved choices.
 See `docs/handoff.md` for verification evidence and the next decision.
 Sample features and calculate outcomes with a simple formula. Workload and
 courier counts are sampled context, not reconstructed state.

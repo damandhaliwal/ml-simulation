@@ -1,7 +1,7 @@
 # Local prediction and outcome logging contract
 
-Status: design draft for Daman's review, September 4, 2026. Nothing in this
-document is implemented yet. The existing API still predicts without persistence.
+Status: accepted by Daman on September 4, 2026. Nothing in this document is
+implemented yet. The existing API still predicts without persistence.
 
 ## Objective and boundary
 
@@ -172,9 +172,10 @@ Before claiming persistence/replay works, add focused tests for:
 6. Null cancellation labels, missing outcomes, failed predictions, and duplicate
    attempts do not distort joins, counts, or errors on a tiny hand-checkable case.
 
-## Decisions before implementation
+## Accepted decisions and remaining implementation choices
 
-- Review this draft, particularly first-write-wins retries and failure-on-log-write.
+- Daman accepted this contract, including first-write-wins retries and
+  failure-on-log-write. Acceptance does not authorize implementation by itself.
 - Choose the first local persistence step. PostgreSQL remains the roadmap option;
   no database, driver, volume, or schema migration is installed/created here.
 - Agree how run context reaches the logger without changing model features, and

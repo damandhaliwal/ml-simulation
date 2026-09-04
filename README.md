@@ -14,9 +14,9 @@ For the latest decisions, verified results, and next step, see
 [the handoff](docs/handoff.md) and [session log](docs/session-log.md).
 
 Next design step: [prediction/outcome logging contract](docs/prediction-logging.md).
-This is a draft for review; persistence, database services, and replay are not
-implemented. It separates immutable predictions from delayed outcomes and flags
-retry behavior and missing cancellation timing before implementation.
+The contract is accepted; persistence, database services, and replay are not
+implemented. It separates immutable predictions from delayed outcomes and records
+the accepted retry/durability behavior plus unresolved cancellation timing.
 
 ## Generator: two functions
 
