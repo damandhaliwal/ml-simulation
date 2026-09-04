@@ -1,0 +1,25 @@
+name: eta-local
+
+services:
+  postgres:
+    image: postgres:17.11-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:?set POSTGRES_DB in .env}"
+      POSTGRES_USER: "${POSTGRES_ADMIN_USER:?set POSTGRES_ADMIN_USER in .env}"
+      POSTGRES_PASSWORD: "${POSTGRES_ADMIN_PASSWORD:?set POSTGRES_ADMIN_PASSWORD in .env}"
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - eta_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 2s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  eta_postgres_data:
+    name: eta_postgres_data

@@ -2,12 +2,13 @@
 
 ## Session topic
 
-Completed a user-led local PostgreSQL startup/authentication/persistence/cleanup
-exercise, then found that the bootstrap `eta_app` is a superuser. Daman asked for
-completed and next steps to be captured in AGENTS for handoff. The full evidence
-and exact recovery sequence are in `AGENTS.md` under **Current handoff: local
-PostgreSQL bootstrap correction**. The role correction and volume reset are not
-yet complete; do not commit the current untracked Compose files.
+Completed a user-led local PostgreSQL startup/authentication/persistence exercise,
+found that the original bootstrap `eta_app` was a superuser, and corrected the
+configuration before publication. Daman reset the verified-empty volume and
+recreated the database with the explicit bootstrap administrator `eta_admin`.
+Codex independently verified the final non-secret configuration, runtime boundary,
+and empty catalog. The next separate step is designing the least-privileged
+application role and first schema migration; neither exists yet.
 
 The goal remains production-grade ML skills with a hard $0 budget. Cloud Run was
 discussed and deferred; no cloud resources or paid services were created. The
@@ -30,10 +31,10 @@ describes the pre-refit model, not a held-out score for the new artifact.
 - The persistence probe survived a reported container removal/recreation, then was
   removed. Codex independently confirmed no verification schema and zero user
   tables. PostgreSQL remains healthy and running with its volume retained.
-- The official image makes `POSTGRES_USER` a superuser. Live inspection confirms
-  `eta_app` currently has `rolsuper = true`; it must become an explicitly named
-  bootstrap administrator before these untracked files are published. A later,
-  separate step creates a different least-privileged API role.
+- The official image makes `POSTGRES_USER` a superuser. Host-side configuration now
+  names that identity `POSTGRES_ADMIN_USER=eta_admin` and maps it to the image's
+  required variable. Live inspection confirms the intentional administrator has
+  `rolsuper = true`. A later step creates a different least-privileged API role.
 - Hard $0 budget; retain the operational ML roadmap locally. No paid service,
   billing enablement, or cloud provisioning based on anticipated free-tier usage.
 - Logging is an accepted design, not implemented behavior. Its records are run
@@ -87,18 +88,24 @@ describes the pre-refit model, not a held-out score for the new artifact.
 - User-reported without pasted output: after `docker compose down` (without
   `--volumes`), the container was absent and named volume remained; after restart,
   the probe row still read `1|survives restart`.
-- Independently checked by Codex: Compose v5.5.0; exact `.env.example`/Compose
-  contents and modes; Linux ARM64 pinned image; healthy container; writable
-  `eta_postgres_data`; `127.0.0.1:5432`; and final result
-  `eta|eta_app|t|t|0` (database, user, superuser, verification absent, user tables).
+- Correction pasted by Daman: the verified-empty old volume was removed and a new
+  volume/container were created; startup reached healthy in 5.6 seconds; TCP
+  authentication returned `eta|eta_admin|t|PostgreSQL 17.11 ... aarch64`; the
+  empty-catalog check returned `t|0`; and Docker inspection showed the pinned
+  image, localhost-only port, and writable named volume.
+- Final independently checked by Codex: quiet Compose validation; exact non-secret
+  `.env.example`/Compose contents; file modes `600` for ignored `.env` and `644`
+  for the publishable files; healthy container; writable `eta_postgres_data`;
+  `127.0.0.1:5432`; and catalog result `eta|eta_admin|t|t|0` (database, user,
+  intentional superuser, verification absent, zero user tables).
 - Security source: the
   [official PostgreSQL image documentation](https://github.com/docker-library/docs/blob/master/postgres/README.md?plain=1)
   states that `POSTGRES_USER` creates a role with superuser power and bootstrap
-  variables only apply to an empty data directory. The reset is therefore
-  required, not cosmetic.
-- Current untracked project work: `.env.example` and `compose.yaml`; unrelated
-  `AGENTS.html` / `AGENTS_files/` remain untouched. `.env` is ignored. No database
-  application dependency, schema, API change, model change, or new evaluation.
+  variables only apply to an empty data directory. This is why the correction used
+  a reviewed volume reset instead of merely changing the running container config.
+- `.env.example` and `compose.yaml` are included in this closeout. Unrelated
+  `AGENTS.html` / `AGENTS_files/` remain untouched and untracked. `.env` is ignored.
+  No database driver, application schema, API/model change, or new evaluation.
 
 ## Prior documentation-step checks
 
@@ -194,8 +201,8 @@ describes the pre-refit model, not a held-out score for the new artifact.
 - [x] Daman reviewed and accepted the retry/durability semantics.
 - [x] Start/authenticate local PostgreSQL and test named-volume persistence.
 - [x] Remove the temporary persistence probe and independently verify zero user tables.
-- [ ] Rename the bootstrap superuser to `eta_admin`, reset the verified-empty named
-  volume, recreate/verify it, then review before publishing Compose files.
+- [x] Rename the bootstrap superuser to `eta_admin`, reset the verified-empty named
+  volume, recreate/verify it, and review the publishable Compose files.
 - [ ] In a separate step, create a distinct least-privileged `eta_app` login and
   the first migration; never give the API the administrator credential.
 - [ ] Decide non-feature run context and operational attempt logging before API
@@ -215,7 +222,7 @@ and [session-log.md](session-log.md) for implementation details and checks.
 Verify publication with `git log -1`, `git status`, and
 `git ls-remote origin refs/heads/main`. The commit containing this logging design
 must match remote main; old session entries preserve their pre-approval state.
-The current PostgreSQL service is intentionally local and running. Follow the
-AGENTS correction steps next. Do not expose either service publicly, publish the
-misnamed superuser setup, delete the named volume before reviewing the edits, or
-infer permission to implement persistence/replay from the accepted design.
+The corrected PostgreSQL service is intentionally local and running. Follow the
+AGENTS least-privilege design step next. Do not expose either service publicly,
+give the API administrator credentials, or infer permission to implement the role,
+migration, persistence, or replay from the accepted logging design.

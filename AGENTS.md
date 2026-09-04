@@ -49,16 +49,15 @@ Do not reintroduce marketplace objects, queues, dispatch, event clocks, intermed
 stages, or route histories. Batching is only a sampled nearby-detour effect.
 Live replay and delayed outcome handling are separate, later steps.
 
-## Current handoff: local PostgreSQL bootstrap correction
+## Current handoff: local PostgreSQL bootstrap complete
 
 ### Completed on September 4, 2026
 
 - Daman created a real `.env` with mode `600`; Git confirms `.gitignore:2:.env`
   excludes it. Never print, read back, stage, or commit its password.
-- Daman created untracked `.env.example` and `compose.yaml`. The template contains
-  only `POSTGRES_DB=eta`, `POSTGRES_USER=eta_app`, and a placeholder password.
-  Compose v5.5.0 validates the file and resolves the pinned official multi-platform
-  image `postgres:17.11-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0`.
+- Daman created `.env.example` and `compose.yaml`. Compose v5.5.0 validates the
+  file and resolves the pinned official multi-platform image
+  `postgres:17.11-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0`.
 - Daman pulled and started the image. His pasted output shows creation of
   `eta-local_default`, `eta_postgres_data`, and a healthy
   `eta-local-postgres-1`. Codex independently verified Linux ARM64, the pinned
@@ -78,51 +77,34 @@ Live replay and delayed outcome handling are separate, later steps.
   downloaded image remain intentionally local. No model/API/schema integration,
   cloud resource, or paid service was added.
 
-### Security issue found before publication
+### Administrator correction completed on September 4, 2026
 
-The current Compose files use `POSTGRES_USER=eta_app`. The official image creates
-that bootstrap user with superuser power, and Codex independently observed
-`rolsuper = true`. This is an administrator mislabeled as an application account.
-Do not commit the current `.env.example`/`compose.yaml`, connect the API with these
-credentials, or describe least privilege as complete. The official image also
-applies bootstrap environment variables only when its data directory is empty.
+- The first bootstrap incorrectly named the official image's superuser `eta_app`.
+  Daman changed the host-side variables to `POSTGRES_ADMIN_USER=eta_admin` and
+  `POSTGRES_ADMIN_PASSWORD`, while Compose maps them to the image's required
+  `POSTGRES_USER` and `POSTGRES_PASSWORD`. `.env.example` contains only the explicit
+  administrator names and a placeholder. The health check still reads the mapped
+  container variables through escaped `$${...}` expressions.
+- After a final `t|0` check confirmed the old database had no verification schema
+  and zero user tables, Daman removed the named volume, recreated PostgreSQL, and
+  pasted the successful startup and verification output.
+- Daman's TCP/password check returned `eta|eta_admin|t|PostgreSQL 17.11 ...
+  aarch64`; `t` is expected because `eta_admin` is the explicit bootstrap
+  administrator. His catalog check returned `t|0`.
+- Codex independently reran quiet Compose validation and the catalog query, checked
+  the non-secret files and modes, and confirmed `eta|eta_admin|t|t|0`, a healthy
+  container, the pinned image, `127.0.0.1:5432`, and writable
+  `eta_postgres_data`. `.env` remains ignored with mode `600`; `.env.example` and
+  `compose.yaml` have mode `644`. No secret was read or printed.
 
-### Next steps — approved to document, not yet completed
+### Next step — separate approval required
 
-1. In the ignored `.env`, preserve the existing secret value but replace the three
-   names with `POSTGRES_DB=eta`, `POSTGRES_ADMIN_USER=eta_admin`, and
-   `POSTGRES_ADMIN_PASSWORD=<existing secret>`. Do not paste the secret into chat.
-2. Make `.env.example` use the same admin variable names and the placeholder
-   `replace-with-a-local-admin-password`.
-3. In `compose.yaml`, map the explicit admin variables to the image's required
-   bootstrap names:
-
-   ```yaml
-   environment:
-     POSTGRES_DB: "${POSTGRES_DB:?set POSTGRES_DB in .env}"
-     POSTGRES_USER: "${POSTGRES_ADMIN_USER:?set POSTGRES_ADMIN_USER in .env}"
-     POSTGRES_PASSWORD: "${POSTGRES_ADMIN_PASSWORD:?set POSTGRES_ADMIN_PASSWORD in .env}"
-   ```
-
-   Keep the health check unchanged: it correctly reads the resulting container
-   variables `POSTGRES_USER` and `POSTGRES_DB` via escaped `$${...}` expressions.
-4. Run `docker compose config --quiet` and `docker compose config --images`. Never
-   print plain `docker compose config`, which can reveal the resolved password.
-5. Only after reviewing the edits, run `docker compose down --volumes`. This
-   irreversibly removes the current `eta_postgres_data`, but Codex verified it has
-   zero user tables and the probe is gone. Do not remove the downloaded image.
-6. Confirm `docker volume inspect eta_postgres_data` reports no such volume, then
-   recreate it with
-   `docker compose up --detach --wait --wait-timeout 60 postgres`.
-7. Through TCP/password authentication, verify database `eta`, user `eta_admin`,
-   PostgreSQL 17.11, and intentional `rolsuper = true`; independently confirm a
-   healthy service, localhost port, attached volume, no `verification` schema, and
-   zero user tables. Stop for Daman's review before documenting/committing the
-   corrected Compose files.
-8. In a separate approved schema step, create a non-superuser `eta_app` login with
-   a different local secret and only the permissions needed by the prediction
-   logger. The API must never receive the `eta_admin` credential. Do not add the
-   role, migrations, driver, API integration, or logging tables during this fix.
+Create a distinct non-superuser `eta_app` login with a different local secret and
+only the permissions required by the prediction logger, then introduce the first
+schema migration. The API must never receive the `eta_admin` credential. Agree on
+the role/bootstrap mechanism, migration format, schema ownership, exact grants,
+and focused positive/negative permission checks before implementation. Do not add
+the role, dependency, migration, API integration, or logging tables speculatively.
 
 ## Working agreement: one small step at a time
 

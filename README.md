@@ -364,9 +364,10 @@ the project environment and a fresh environment installed from `requirements.txt
 [Starlette's test-client documentation](https://www.starlette.io/testclient/).
 
 This is a localhost learning service, **not a public deployment**: no authentication,
-TLS, rate limiting, persistent prediction logging, database, or delayed-outcome
-processing yet. Uvicorn prints ordinary request/error logs to the terminal; these
-are not model-monitoring records. Cloud deployment still requires explicit approval.
+TLS, rate limiting, persistent prediction logging, database integration, or
+delayed-outcome processing yet. A separate local PostgreSQL service now exists,
+but the API does not connect to it. Uvicorn's ordinary request/error logs are not
+model-monitoring records. Cloud deployment still requires explicit approval.
 
 ## Local Docker API
 
@@ -455,7 +456,67 @@ Scope: tested locally on Linux ARM64 through Docker Desktop on an Apple Silicon
 Mac. The full Python suite was run on macOS, not inside the image. AMD64, full
 Linux-suite execution, runtime/test dependency separation, vulnerability scanning,
 load testing, authentication/TLS, image-registry publication, and cloud deployment
-remain unverified or deferred. No Kubernetes, Compose stack, or database is needed
-for this local step. Detailed evidence is in [the handoff](docs/handoff.md).
+remain unverified or deferred. The API image smoke test does not require the local
+Compose/PostgreSQL service. Detailed evidence is in [the handoff](docs/handoff.md).
+
+## Local PostgreSQL
+
+`compose.yaml` runs the pinned official PostgreSQL 17.11 Bookworm image with a
+named volume, health check, and host access restricted to `127.0.0.1:5432`. This
+is local infrastructure for the future logging work; no application schema,
+database driver, API connection, or prediction persistence exists yet.
+
+Create the ignored local environment file and replace the password placeholder
+with a real local administrator secret:
+
+```sh
+cp .env.example .env
+chmod 600 .env
+```
+
+The host-side `POSTGRES_ADMIN_*` names make the privilege boundary explicit.
+Compose maps them to the official image's required bootstrap variables. That
+bootstrap identity is intentionally a superuser; it must never be used by the API.
+The future `eta_app` role will have a different secret and restricted privileges.
+
+Validate without printing the resolved configuration, then start the service:
+
+```sh
+docker compose config --quiet
+docker compose config --images
+docker compose up --detach --wait --wait-timeout 60 postgres
+docker compose ps
+```
+
+Do not run plain `docker compose config`, which may print the resolved password.
+Expected state: `eta-local-postgres-1` is healthy, the image matches the digest in
+`compose.yaml`, and the host mapping is `127.0.0.1:5432->5432/tcp`.
+
+Verify the initialized identity over TCP/password authentication without printing
+the password:
+
+```sh
+docker compose exec postgres sh -eu -c '
+  PGPASSWORD="$POSTGRES_PASSWORD" psql \
+    --host 127.0.0.1 \
+    --username "$POSTGRES_USER" \
+    --dbname "$POSTGRES_DB" \
+    --no-psqlrc \
+    --tuples-only \
+    --no-align \
+    --set ON_ERROR_STOP=1 \
+    --command "SELECT current_database(), current_user, rolsuper, version() FROM pg_roles WHERE rolname = current_user;"
+'
+```
+
+Expected output begins `eta|eta_admin|t|PostgreSQL 17.11`; `t` is intentional for
+this administrator. Stop the service while retaining its data with:
+
+```sh
+docker compose down
+```
+
+`docker compose down --volumes` also deletes `eta_postgres_data` and is destructive.
+Use it only for an explicitly reviewed reset. Neither command removes the image.
 
 The broader roadmap and working agreement remain in [AGENTS.md](AGENTS.md).
