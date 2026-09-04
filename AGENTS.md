@@ -26,9 +26,13 @@ FastAPI `/predict` and `/health` endpoints. The CLI interface was published with
 Daman's explicit approval in `6e8c0aa`; its temporary no-commit instruction is
 resolved. Daman then approved the local API step, including its dependencies
 and checks, under the recurring publish workflow below.
-Generated model artifacts stay local and Git-ignored. Docker, cloud deployment,
-database logging, and live replay remain separate, unapproved implementation
-steps. See `docs/handoff.md` for verification and the next decision.
+Generated model artifacts stay local and Git-ignored. Docker packaging is now
+user-led: Daman edits/builds/runs it with instructions. He separately approved
+Codex implementing the optional API `--host` argument and focused tests, keeping
+the localhost default. Do not take over later Docker steps without approval.
+The local Dockerfile/ignore file remain uncommitted; container HTTP serving,
+cloud deployment, database logging, and live replay are not complete.
+See `docs/handoff.md` for verification evidence and the next decision.
 Sample features and calculate outcomes with a simple formula. Workload and
 courier counts are sampled context, not reconstructed state.
 Do not reintroduce marketplace objects, queues, dispatch, event clocks, intermediate

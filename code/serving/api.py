@@ -58,13 +58,27 @@ def create_app(artifact_dir: Path | str) -> FastAPI:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Serve the synthetic ETA model on localhost only.")
-    parser.add_argument("--model-dir", type=Path, required=True, help="Our own trusted artifact directory.")
+    parser = argparse.ArgumentParser(
+        description="Serve the synthetic ETA model (localhost by default)."
+    )
+    parser.add_argument(
+        "--model-dir", type=Path, required=True,
+        help="Our own trusted artifact directory."
+    )
+    parser.add_argument(
+        "--host", default="127.0.0.1",
+        help="Bind address; use 0.0.0.0 inside Docker."
+    )
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
         parser.error("--port must be between 1 and 65535")
-    uvicorn.run(create_app(args.model_dir), host="127.0.0.1", port=args.port, workers=1)
+    uvicorn.run(
+        create_app(args.model_dir),
+        host=args.host,
+        port=args.port,
+        workers=1,
+    )
 
 
 if __name__ == "__main__":

@@ -3,6 +3,71 @@
 Newest entries first. Repository-local session capture and handoff, so the notes
 travel with the code; no global session log or unrelated history was modified.
 
+## 2026-09-03 21:16 EDT — Optional API host for user-led Docker packaging
+
+Project: ml-simulation. Duration: extended learning conversation, bounded code change.
+
+### Decisions
+
+- Daman is writing/running the Docker packaging himself to learn it. He delegated
+  only the proposed API host-option change and test to Codex. Later Docker
+  startup, rebuild, HTTP checks, and cloud work must not run ahead of his review.
+- `main()` accepts optional `--host`, defaulting to `127.0.0.1`, and forwards it
+  to Uvicorn with the existing port validation and one worker. Model loading,
+  request validation, and prediction code are unchanged. No new dependency.
+- `0.0.0.0` is intended for the container listener; later Docker port publication
+  must bind the Mac side to `127.0.0.1`. Do not expose this unauthenticated API.
+- Follow the standing commit/push workflow for this change and its documentation
+  only. Preserve the untracked Dockerfile, ignore file, and unrelated HTML exports.
+- Use the session-capture skill with existing repository-local records; no
+  global memories/logs or historical entries are edited or pruned.
+
+### Checks and results
+
+```sh
+PYTHONPATH=code .venv/bin/python -W error -m unittest discover -s tests -p test_api.py -v
+PYTHONPATH=code .venv/bin/python -W error -m unittest discover -s tests -q
+PYTHONPATH=code /private/tmp/eta-api-check.4Y7ZC9/venv/bin/python -W error -m unittest discover -s tests -q
+PYTHONPATH=code .venv/bin/python -W error -m serving.api --help
+git diff --check
+```
+
+- Red/green: the new explicit-host case failed on the old code with unrecognized
+  arguments; after implementation all 12 API tests passed (0.274 seconds).
+  Both default/explicit addresses, port 8123, one worker, and deferred model
+  loading are asserted. Mocked Uvicorn means the CLI test opens no network port.
+- Full suite: 70 tests pass with warnings treated as errors in the project
+  environment (4.191 seconds) and the previously created clean pinned environment
+  (4.176 seconds). Tests fit temporary fixtures, not the saved full-data model.
+- Diff whitespace check passes. Before/after SHA-256 checks confirm the saved
+  model binary, metadata, Dockerfile, and ignore file are unchanged.
+- Help text shows `--host` and the unchanged localhost default. No real server,
+  Docker build, dependency installation, or full-data training ran in this step.
+
+### Docker evidence and correction
+
+- Daman built the image locally and pasted successful Linux ARM64 / UID 10001
+  configuration, dependency consistency, and model/API import results. pip's
+  unwritable-cache warning is avoided with `python -m pip --no-cache-dir check`.
+- The initial file listing exposed a mistake in Codex's ignore instructions:
+  `!code/` re-included descendants. The corrected file starts with `**` and allows
+  only packaging files, requirements, and Python files in models/prep/serving,
+  without directory-only exceptions. Daman reported the corrected checks passed.
+- Mac/Linux example prediction commands were supplied and accepted; their
+  outputs were not captured. Do not describe them as independently verified.
+- Docker packaging remains uncommitted and was not edited by Codex. Its current
+  CMD prints Python's version; the existing image does not contain this API edit.
+
+### Artifacts and follow-ups
+
+- Modified API/test plus README, AGENTS, this session log, and handoff. No model,
+  dataset, dependency, Dockerfile, or ignore-file change in this implementation.
+- [ ] Daman reviews this step before the container startup command is changed.
+- [ ] Rebuild later and verify container health, prediction parity, invalid
+  requests, and shutdown with a read-only artifact mount and local host port.
+- [ ] Runtime/test dependency separation and Docker publication remain separate.
+- [ ] Cloud deployment and an untouched future model-evaluation window remain open.
+
 ## 2026-09-03 18:12 EDT — Local prediction API
 
 Project: ml-simulation. Duration: brief conversation, bounded implementation.

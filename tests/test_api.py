@@ -143,12 +143,25 @@ class TestETAAPI(unittest.TestCase):
             self.assertEqual(client.post("/health").status_code, 405)
             self.assertEqual(client.get("/missing").status_code, 404)
 
-    def test_cli_binds_only_localhost_and_one_worker(self):
-        with patch("sys.argv", ["api", "--model-dir", str(self.artifact), "--port", "8123"]):
-            with patch("serving.api.uvicorn.run") as run:
-                main()
-        self.assertEqual(run.call_args.kwargs, {"host": "127.0.0.1", "port": 8123, "workers": 1})
-        self.assertIsNone(run.call_args.args[0].state.artifact)
+    def test_cli_host_selection_and_one_worker(self):
+        cases = (
+            ([], "127.0.0.1"),
+            (["--host", "0.0.0.0"], "0.0.0.0"),
+        )
+        for extra_args, expected_host in cases:
+            with self.subTest(host=expected_host):
+                argv = [
+                    "api", "--model-dir", str(self.artifact),
+                    "--port", "8123", *extra_args,
+                ]
+                with patch("sys.argv", argv):
+                    with patch("serving.api.uvicorn.run") as run:
+                        main()
+                self.assertEqual(
+                    run.call_args.kwargs,
+                    {"host": expected_host, "port": 8123, "workers": 1},
+                )
+                self.assertIsNone(run.call_args.args[0].state.artifact)
 
 
 if __name__ == "__main__":

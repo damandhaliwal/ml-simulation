@@ -2,8 +2,9 @@
 
 Current stage: **synthetic data, chronological evaluation, three baselines,
 and a locally saved, full-data LightGBM ETA model with validated Python/CLI and
-local HTTP prediction interfaces**. Training is offline; the API runs only on
-localhost. No Docker container or cloud deployment exists yet.
+local HTTP prediction interfaces**. Training is offline; the API defaults to
+localhost. Docker packaging is in progress locally; container HTTP serving and
+cloud deployment are not complete. See the handoff for the user-led Docker checks.
 There are no queues, courier dispatch, event clocks, intermediate stages, or
 marketplace state. All data and measured model errors are simulated.
 
@@ -316,7 +317,11 @@ PYTHONPATH=code .venv/bin/python -W error -m serving.api \
   --model-dir artifacts/eta_2026_jan_aug --port 8000
 ```
 
-This runs in the foreground on **127.0.0.1 only**, with one worker process.
+This command runs in the foreground on **127.0.0.1**, with one worker process.
+The optional `--host` argument changes the listening address; the default remains
+`127.0.0.1`. Use `--host 0.0.0.0` inside a container when configuring Docker port
+forwarding, not for ordinary local runs of this unauthenticated service. Publish
+the container port on the host's `127.0.0.1` to keep host access local.
 Stop it with **Ctrl+C**. From another terminal:
 
 ```sh
@@ -354,6 +359,7 @@ the project environment and a fresh environment installed from `requirements.txt
 This is a localhost learning service, **not a public deployment**: no authentication,
 TLS, rate limiting, persistent prediction logging, database, or delayed-outcome
 processing yet. Uvicorn prints ordinary request/error logs to the terminal; these
-are not model-monitoring records. Docker and deployment require separate approval.
+are not model-monitoring records. Docker startup/HTTP verification is the next
+separate step; cloud deployment still requires explicit approval.
 
 The broader roadmap and working agreement remain in [AGENTS.md](AGENTS.md).
