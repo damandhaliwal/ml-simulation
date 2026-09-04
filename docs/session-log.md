@@ -3,6 +3,89 @@
 Newest entries first. Repository-local session capture and handoff, so the notes
 travel with the code; no global session log or unrelated history was modified.
 
+## 2026-09-03 23:04 EDT — Local Docker API closeout
+
+Project: ml-simulation. Duration: extended user-led Docker learning session.
+
+### Decisions
+
+- Daman created, built, and ran the Docker packaging with instructions; Codex
+  implemented only the separately approved API host option in `c7c880b`.
+- After the serving checks and container removal, Daman explicitly approved
+  Codex documenting results and committing/pushing the reviewed packaging files.
+  This is source publication, not an image upload or cloud deployment.
+- Keep the existing trusted model outside the image, mounted read-only at
+  `/model`. Run one non-root API worker on container `0.0.0.0:8000`, publishing
+  only host `127.0.0.1:8000`. No training occurs during build/startup/prediction.
+- Preserve the corrected default-deny source allowlist. No agent instructions,
+  docs, simulator, tests, caches, data, or model binaries belong in the app copy.
+- Documentation distinguishes pasted HTTP evidence, user-reported file checks,
+  read-only Docker metadata checks, and automated macOS tests. The session-capture
+  skill uses the existing repo-local log/handoff; no global records or old entries
+  were changed or pruned.
+
+### User-run Docker evidence
+
+The HTTP timestamps below are September 4 UTC / September 3 EDT.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Build/runtime | Linux ARM64, UID/GID 10001, Python 3.13.7; imports and dependency check pass | User-pasted output |
+| Corrected application files | Requirements plus nine Python files; no simulator/caches | User reported success after correction; listing not repasted |
+| Health, 01:25:34 UTC | 200, ready, expected model checksum, simulated | User-pasted HTTP response |
+| Prediction, 01:29:47 UTC | 200, EXAMPLE-001, 43.63 minutes, same checksum, simulated | User-pasted HTTP response |
+| Empty object, 01:29:57 UTC | 422, missing-fields detail, no prediction | User-pasted HTTP response |
+| Malformed JSON, 01:30:11 UTC | 422, Body must be a valid JSON object | User-pasted HTTP response |
+| Stop/removal | No matching eta-api container after stopping the API terminal process | User report plus Codex read-only confirmation |
+
+- The expected model checksum is
+  `29447c8ee3ac6ac62d0f72b61d43f24668d01ed62b7974266b9f7991d3ca5dcd`.
+- The initial filter incorrectly used `!code/`, re-including descendants. Codex
+  acknowledged the error; Daman removed directory-only exceptions and rebuilt.
+  Final patterns allow only requirements/packaging and Python files directly in
+  models/prep/serving. No broad source-directory exception remains.
+- The first shutdown check listed the still-existing container. Daman then
+  stopped the foreground process and repeated the check successfully. Do not
+  infer an observed graceful-shutdown log or exit code; neither was captured.
+- The example matches the earlier Mac prediction. It is one portability smoke
+  check, not comprehensive Linux/Mac parity or a model accuracy evaluation.
+
+### Closeout verification by Codex
+
+```sh
+PYTHONPATH=code .venv/bin/python -W error -m unittest discover -s tests -q
+PYTHONPATH=code /private/tmp/eta-api-check.4Y7ZC9/venv/bin/python -W error -m unittest discover -s tests -q
+docker image inspect eta-api:local
+docker ps -a --filter 'name=^/eta-api$' --format '{{.Names}} {{.Status}}'
+git diff --check
+```
+
+- All 70 tests pass in the project environment (4.175 seconds) and the existing
+  clean pinned macOS environment (4.159 seconds), with warnings treated as errors.
+- Read-only image inspection confirms the final API CMD, Linux ARM64, numeric
+  non-root user, `/app` working directory, and exposed `8000/tcp` metadata.
+  Final local image ID:
+  `sha256:a47342eac379289f72ac62be109f7337828a740df3d8b4d8cb2dea3f6da48443`.
+  This is the rebuilt serving image, not the earlier Python-version diagnostic image.
+- Read-only filtered container listing returned no output. No service was started,
+  rebuilt, stopped, or deployed by Codex during closeout. Existing model/metadata
+  checksums and Git-ignore status were checked; no artifact enters the commit.
+
+### Artifacts, limits, and follow-ups
+
+- Add the reviewed Dockerfile and `.dockerignore`; normalize only their missing
+  final newlines. Update README run/check/stop instructions, AGENTS current state,
+  this log, and handoff. No application code or dependency changes.
+- Exclude unrelated `AGENTS.html` / `AGENTS_files/`, ignored data, models, and
+  environments from publication. Preserve old log entries as historical records.
+- Publication is the commit containing this entry; verify remote main using
+  the Git commands in the handoff. No image-registry upload is part of this step.
+- [ ] Review a small cloud plan with explicit cost/access/artifact decisions before
+  any provisioning. Future implementation remains learning-first and approval-gated.
+- Deferred: runtime/test dependency split, full Linux tests, AMD64, vulnerability
+  scan/runtime upgrade, load tests, authentication/TLS, image registry, database,
+  replay, monitoring, and a later untouched model-evaluation window.
+
 ## 2026-09-03 21:16 EDT — Optional API host for user-led Docker packaging
 
 Project: ml-simulation. Duration: extended learning conversation, bounded code change.

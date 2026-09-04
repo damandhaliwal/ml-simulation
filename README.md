@@ -3,8 +3,8 @@
 Current stage: **synthetic data, chronological evaluation, three baselines,
 and a locally saved, full-data LightGBM ETA model with validated Python/CLI and
 local HTTP prediction interfaces**. Training is offline; the API defaults to
-localhost. Docker packaging is in progress locally; container HTTP serving and
-cloud deployment are not complete. See the handoff for the user-led Docker checks.
+localhost. Local Linux ARM64 Docker serving has passed user-run smoke checks;
+cloud deployment has not started. See the handoff for the evidence and limitations.
 There are no queues, courier dispatch, event clocks, intermediate stages, or
 marketplace state. All data and measured model errors are simulated.
 
@@ -359,7 +359,96 @@ the project environment and a fresh environment installed from `requirements.txt
 This is a localhost learning service, **not a public deployment**: no authentication,
 TLS, rate limiting, persistent prediction logging, database, or delayed-outcome
 processing yet. Uvicorn prints ordinary request/error logs to the terminal; these
-are not model-monitoring records. Docker startup/HTTP verification is the next
-separate step; cloud deployment still requires explicit approval.
+are not model-monitoring records. Cloud deployment still requires explicit approval.
+
+## Local Docker API
+
+`Dockerfile` packages Python 3.13.7, the pinned requirements, and the API's Python
+modules. It installs `libgomp1` for OpenMP and `tzdata` for Toronto timezone data,
+then runs as UID/GID `10001:10001`. The Python patch version matches the saved
+artifact's strict runtime checks; this is a local compatibility baseline, not
+a claim of production security hardening.
+
+`.dockerignore` excludes everything except the packaging files, requirements,
+and Python files directly inside `code/models`, `code/prep`, and `code/serving`.
+Only requirements and those Python files are copied into the image. Agent
+instructions, docs, simulator, tests, caches, Git history, environment files, datasets, and
+model artifacts are excluded. Do not add directory-only exceptions such as
+`!code/`: Docker also applies those matches to descendants, widening the allowlist.
+
+The saved model is deliberately **not inside the image**. Before starting it,
+you need our own trusted `model.joblib` and `metadata.json` in the local artifact
+directory described above. A Git clone alone does not supply the model. Joblib
+can execute code while loading; never substitute an untrusted artifact.
+
+From the repository root, with Docker running:
+
+```sh
+docker build --progress=plain -t eta-api:local .
+docker run --rm --name eta-api \
+  -p 127.0.0.1:8000:8000 \
+  --mount type=bind,source=./artifacts/eta_2026_jan_aug,target=/model,readonly \
+  eta-api:local
+```
+
+The relative mount source assumes this working directory; an absolute artifact
+path also works (quote the full mount argument when that path contains spaces).
+The model directory is read-only, not the whole repository. These commands build
+and run locally; they do not retrain or upload the image.
+
+The default exec-form command runs `python -m serving.api --model-dir /model
+--host 0.0.0.0 --port 8000`. That address is inside the container. The `-p` option
+separately publishes it on the host's localhost only. `EXPOSE 8000` is descriptive
+metadata, not a port-publishing rule. Do not replace the mapping with `-p 8000:8000`
+for this unauthenticated local service. No `--network none` here: HTTP access needs
+the container network. See [port publishing](https://docs.docker.com/engine/network/port-publishing/)
+and [read-only bind mounts](https://docs.docker.com/engine/storage/bind-mounts/).
+
+After startup completes, use a second terminal at the repository root:
+
+```sh
+curl --include --fail-with-body --max-time 10 http://127.0.0.1:8000/health
+curl --include --fail-with-body --max-time 10 http://127.0.0.1:8000/predict \
+  -H 'Content-Type: application/json' \
+  --data-binary @docs/prediction-request.example.json
+curl --include --max-time 10 http://127.0.0.1:8000/predict \
+  -H 'Content-Type: application/json' --data-binary '{}'
+curl --include --max-time 10 http://127.0.0.1:8000/predict \
+  -H 'Content-Type: application/json' --data-binary '{'
+```
+
+Expected results: health 200/ready; prediction 200 at **43.63 minutes** for
+`EXAMPLE-001`, with the recorded model checksum and `simulated: true`; incomplete
+and malformed requests return 422 without a prediction. These match Daman's
+pasted container HTTP results. This is a single-example portability smoke check,
+not a fresh held-out model evaluation or comprehensive cross-platform parity test.
+
+Stop the foreground server with Ctrl+C, then check removal:
+
+```sh
+docker ps -a --filter 'name=^/eta-api$' --format '{{.Names}}'
+```
+
+Expected: no output. `--rm` removes the stopped container, not the image or host
+model. A name in that listing means the container still exists; `-a` includes
+stopped containers as well. Do not mistake an HTTP 200 for successful shutdown.
+
+Optional image-only checks (these commands override its API startup command):
+
+```sh
+docker run --rm --network none eta-api:local find /app -type f
+docker run --rm --network none eta-api:local python -m pip --no-cache-dir check
+```
+
+The application file listing should contain requirements plus nine Python files,
+with no simulator or caches. `--no-cache-dir` avoids pip's unwritable-cache warning
+for the numeric non-root user. These inspection commands need no model mount.
+
+Scope: tested locally on Linux ARM64 through Docker Desktop on an Apple Silicon
+Mac. The full Python suite was run on macOS, not inside the image. AMD64, full
+Linux-suite execution, runtime/test dependency separation, vulnerability scanning,
+load testing, authentication/TLS, image-registry publication, and cloud deployment
+remain unverified or deferred. No Kubernetes, Compose stack, or database is needed
+for this local step. Detailed evidence is in [the handoff](docs/handoff.md).
 
 The broader roadmap and working agreement remain in [AGENTS.md](AGENTS.md).

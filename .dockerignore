@@ -1,0 +1,8 @@
+**
+!Dockerfile
+!.dockerignore
+!requirements.txt
+
+!code/models/*.py
+!code/prep/*.py
+!code/serving/*.py
