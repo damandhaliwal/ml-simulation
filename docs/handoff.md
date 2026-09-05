@@ -1,5 +1,34 @@
 # Handoff — September 4, 2026
 
+## September 5, 2026 — eta_app role and migration 001 applied
+
+Daman created the least-privileged login and the first migration was applied;
+no logger, driver, API integration, or replay exists yet.
+
+- Role (Daman-created, verified): `eta_app|f|f|f|5` — login, non-superuser,
+  no createdb/createrole, connection limit 5. Earlier pasted password was
+  replaced with a new distinct local secret; only placeholders are in Git.
+- Migration file `db/migrations/001_app_logging.sql` SHA-256:
+  `8ee5e0af3c1121728e40692745c7e08e001a1c3f59b5a4e7b3ee01ffe023b977`.
+  `.env.example`: `05ae49b2229ddf6a2e784da4c49fba8ca00392f0615c65e3640806258e2a5a5d`.
+  `compose.yaml` unchanged: `5adc22d1f66826fc90a8ff4381f3ad9e54203451541b76225231b5a8b1176f91`.
+- Apply as `eta_admin` via stdin with `ON_ERROR_STOP=1`: schema + 3 tables +
+  ownership + 5 grants, `APPLY OK`. No `CREATE ROLE` inside the file.
+- Ownership: schema `app` and tables `runs/predictions/outcomes` owned by
+  `eta_admin`; `eta_app` owns 0 objects. Grants: `INSERT, SELECT` only on all
+  three tables; schema `USAGE t / CREATE f`; database `CONNECT t`.
+- Positive as `eta_app` (rolled back): 3 `INSERT`s + `SELECT` saw 1 row;
+  after `ROLLBACK`, `app.predictions` holds 0 rows. No test residue.
+- Negative as `eta_app`, all denied: `CREATE` (schema), `DELETE`/`UPDATE`
+  (table), `DROP` (must be owner), `pg_authid` read.
+- Daman's TCP/password check returned `eta_app` for `SELECT current_user;`.
+  Socket checks above used container-local trust, no password handling.
+- Service still healthy on `127.0.0.1:5432`; `app` holds 3 tables, 0 prediction
+  rows. All 70 tests pass with `-W error` (4.216s). `git diff --check` passes.
+- Next: API logger/persistence and outcome ingestion remain separate approved
+  steps; cancellation observation policy still unresolved per
+  `docs/prediction-logging.md`.
+
 ## Session topic
 
 Completed a user-led local PostgreSQL startup/authentication/persistence exercise,
