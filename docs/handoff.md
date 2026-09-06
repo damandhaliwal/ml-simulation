@@ -1,5 +1,16 @@
 # Handoff — September 4, 2026
 
+## September 6, 2026 — challenger bout: rejected, rollback drilled
+
+Challenger (Jan–Aug + Sept W1, 116,390 rows) vs production on untouched Sept
+W2: MAE 3.167 vs 3.175 and Brier 0.0804 vs 0.0806 favor the challenger by
+slivers, but storm bias is worse (-0.694 vs -0.669) — promotion rule fails,
+incumbent stands. Rollback drill labeled as such: promoted, served
+(`722c052f…` on health), rolled back, production health (`29447c8e…`)
+restored. Full record in `docs/evaluation-challenger-2026-09.md`; both runs
+admin-deleted, residue `0|0|0|0`. Phase D machinery complete; remaining: CI,
+demo runbook.
+
 ## September 6, 2026 — dashboard and monitoring suite complete
 
 `GET /dashboard` renders one card per logged run from the existing check
