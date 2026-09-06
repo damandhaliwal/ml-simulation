@@ -355,13 +355,21 @@ Optional prediction logging: send `X-Run-Id` and `X-Predicted-At`
 (see `code/persistence/predictions.py:insert_run`); the prediction row is
 committed before the 200 response, and the response is built from the stored
 row, so an identical retry returns byte-identical JSON with one stored row.
-A different payload/model/value under the same key returns 409; an unknown
+A different payload/model/value/probability under the same key returns 409; an unknown
 run returns 422; half-supplied or naive-timestamp headers return 422. Logging
 needs `POSTGRES_DB`, `POSTGRES_APP_USER`, and `POSTGRES_APP_PASSWORD` in the
 environment (`PGHOST` defaults to 127.0.0.1, `PGPORT` to 5432); a configured
 but unreachable store fails startup, and run headers with no database return
 503. Requests without the headers predict exactly as before and store nothing.
 The API connects as the least-privileged `eta_app` login, never the admin.
+
+Optional late-delivery risk: start the server with `--risk-model-dir` pointing
+at a trusted risk artifact (see `code/models/refit_risk.py`), and responses
+gain `late_probability` plus `risk_model_sha256` — served from the stored row
+on logged requests, so retries stay identical. Without the flag the ETA-only
+shape is unchanged. Probabilities persist in `late_probability` (migration
+`002`); pre-risk NULL rows are excluded from risk scoring, and replay reports
+a Brier score over matched pairs that carry one.
 
 `create_app(artifact_dir)` builds the app without loading anything. Its startup
 context loads and retains the model/metadata, and clears the reference on shutdown.
@@ -372,10 +380,11 @@ not a throughput guarantee; load/concurrency testing has not been done.
 
 The HTTP client is **HTTPX2** because the pinned Starlette test client deprecates
 HTTPX. AnyIO is pinned to 4.14.2 because Starlette 1.6.0 imports aliases deprecated
-in 4.15; no warning suppression is used. All 95 tests pass with `-W error` when
-the local database is configured; without it 82 run with 14 clean skips (12
-persistence tests plus the API-logging and replay classes). Both modes hold in the
-project environment and in a fresh environment installed from `requirements.txt`. See
+in 4.15; no warning suppression is used. All 117 tests pass with `-W error` when
+the local database is configured; without it 98 run with 16 clean skips (13
+persistence tests plus the API-logging, API-risk, and replay classes). Both modes
+hold in the project environment and in a fresh environment installed from
+`requirements.txt`. See
 [Starlette's test-client documentation](https://www.starlette.io/testclient/).
 
 This is a localhost learning service, **not a public deployment**: no authentication,
@@ -464,7 +473,7 @@ docker run --rm --network none eta-api:local find /app -type f
 docker run --rm --network none eta-api:local python -m pip --no-cache-dir check
 ```
 
-The application file listing should contain requirements plus twelve Python files,
+The application file listing should contain requirements plus fourteen Python files,
 with no simulator or caches. `--no-cache-dir` avoids pip's unwritable-cache warning
 for the numeric non-root user. These inspection commands need no model mount.
 
@@ -480,8 +489,10 @@ Compose/PostgreSQL service. Detailed evidence is in [the handoff](docs/handoff.m
 `compose.yaml` runs the pinned official PostgreSQL 17.11 Bookworm image with a
 named volume, health check, and host access restricted to `127.0.0.1:5432`. It
 holds the `app` schema (`runs`, `predictions`, `outcomes`, all owned by
-`eta_admin`) behind migration `db/migrations/001_app_logging.sql. The API
-connects only as the least-privileged `eta_app` login (`INSERT`/`SELECT`).
+`eta_admin`) behind migrations `db/migrations/001_app_logging.sql` and
+`db/migrations/002_risk_logging.sql` (the latter adds nullable
+`late_probability`). The API connects only as the least-privileged `eta_app`
+login (`INSERT`/`SELECT`).
 
 Create the ignored local environment file and replace the password placeholder
 with a real local administrator secret:

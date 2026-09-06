@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 
 from models.predict_eta import validate_request
 from models.refit_eta import load_artifact
+from models.refit_risk import load_risk_artifact
 from persistence.db import db_config_from_env
 from persistence.predictions import PredictionConflict, insert_prediction
 from prep.dataset_validation import parse_timestamp
@@ -20,12 +21,17 @@ RUN_ID_HEADER = "x-run-id"
 PREDICTED_AT_HEADER = "x-predicted-at"
 
 
-def create_app(artifact_dir: Path | str) -> FastAPI:
-    """Create a local API; the explicitly selected trusted model loads at startup."""
+def create_app(artifact_dir: Path | str, risk_artifact_dir: Path | str | None = None) -> FastAPI:
+    """Create a local API; explicitly selected trusted models load at startup.
+
+    The risk artifact is optional: without it /predict serves ETA alone,
+    exactly as before. With it, every response also carries late_probability.
+    """
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         # Let artifact errors abort startup rather than serve with a fallback model.
         app.state.artifact = load_artifact(artifact_dir)
+        app.state.risk = load_risk_artifact(risk_artifact_dir) if risk_artifact_dir is not None else None
         try:
             app.state.db_config = db_config_from_env()
         except ValueError as error:
@@ -46,9 +52,11 @@ def create_app(artifact_dir: Path | str) -> FastAPI:
             yield
         finally:
             app.state.artifact = None
+            app.state.risk = None
 
     app = FastAPI(title="Synthetic ETA API", lifespan=lifespan)
     app.state.artifact = None
+    app.state.risk = None
     app.state.db_config = None
 
     def loaded_artifact():
@@ -64,12 +72,16 @@ def create_app(artifact_dir: Path | str) -> FastAPI:
     @app.get("/health")
     def health() -> dict:
         _, metadata = loaded_artifact()
-        return {"status": "ready", "model_sha256": metadata["model_sha256"],
+        body = {"status": "ready", "model_sha256": metadata["model_sha256"],
                 "simulated": metadata["simulated"]}
+        if app.state.risk is not None:
+            body["risk_model_sha256"] = app.state.risk[1]["model_sha256"]
+        return body
 
     @app.post("/predict")
     def predict(request: Request, payload: Annotated[dict, Body(description="Same confirmation-time fields as the local CLI.")]) -> dict:
         model, metadata = loaded_artifact()
+        risk = request.app.state.risk
         try:
             features = validate_request(payload)
         except ValueError as error:
@@ -83,10 +95,15 @@ def create_app(artifact_dir: Path | str) -> FastAPI:
         # A synchronous route keeps CPU-bound model prediction off the async event loop.
         start = time.perf_counter()
         duration = model.predict([features])[0]
+        probability = risk[0].predict([features])[0] if risk is not None else None
         latency_ms = (time.perf_counter() - start) * 1000
         if run_id is None:
-            return {"order_id": payload["order_id"], "predicted_delivery_duration_minutes": duration,
+            body = {"order_id": payload["order_id"], "predicted_delivery_duration_minutes": duration,
                     "model_sha256": metadata["model_sha256"], "simulated": metadata["simulated"]}
+            if risk is not None:
+                body["late_probability"] = probability
+                body["risk_model_sha256"] = risk[1]["model_sha256"]
+            return body
         try:
             predicted_at = parse_timestamp(predicted_at_raw)
         except ValueError as error:
@@ -105,7 +122,8 @@ def create_app(artifact_dir: Path | str) -> FastAPI:
                     request_payload=payload, features=features,
                     predicted_delivery_duration_minutes=duration,
                     model_sha256=metadata["model_sha256"],
-                    predicted_at_simulated=predicted_at, model_latency_ms=latency_ms)
+                    predicted_at_simulated=predicted_at, model_latency_ms=latency_ms,
+                    late_probability=probability)
         except PredictionConflict as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
         except psycopg.errors.ForeignKeyViolation as error:
@@ -114,9 +132,16 @@ def create_app(artifact_dir: Path | str) -> FastAPI:
         except psycopg.OperationalError as error:
             raise HTTPException(status_code=503, detail="Prediction store unavailable") from error
         # Respond from the stored row so retries return the identical prediction.
-        return {"order_id": row["order_id"],
+        # Conflict comparison already proved stored equals fresh, except for
+        # legacy NULL rows, which fall back to the fresh probability.
+        body = {"order_id": row["order_id"],
                 "predicted_delivery_duration_minutes": row["predicted_delivery_duration_minutes"],
                 "model_sha256": row["model_sha256"], "simulated": row["simulated"]}
+        if risk is not None:
+            stored_probability = row["late_probability"]
+            body["late_probability"] = probability if stored_probability is None else float(stored_probability)
+            body["risk_model_sha256"] = risk[1]["model_sha256"]
+        return body
 
     return app
 
@@ -130,6 +155,10 @@ def main() -> None:
         help="Our own trusted artifact directory."
     )
     parser.add_argument(
+        "--risk-model-dir", type=Path, default=None,
+        help="Optional trusted risk artifact directory; without it /predict serves ETA alone."
+    )
+    parser.add_argument(
         "--host", default="127.0.0.1",
         help="Bind address; use 0.0.0.0 inside Docker."
     )
@@ -138,7 +167,7 @@ def main() -> None:
     if not 1 <= args.port <= 65535:
         parser.error("--port must be between 1 and 65535")
     uvicorn.run(
-        create_app(args.model_dir),
+        create_app(args.model_dir, args.risk_model_dir),
         host=args.host,
         port=args.port,
         workers=1,

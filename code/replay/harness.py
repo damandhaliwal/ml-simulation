@@ -19,6 +19,7 @@ import httpx2
 import psycopg
 
 from models.baselines import compute_metrics
+from models.late_risk import promise_minutes
 from models.predict_eta import REQUEST_FIELDS
 from models.refit_eta import file_sha256
 from persistence.db import db_config_from_env
@@ -125,20 +126,24 @@ def score_run(conn, *, run_id: str, source_orders: list[dict]) -> dict:
     """Join stored predictions to stored outcomes; pending labels are reported, not scored."""
     source_by_id = {o["order_id"]: o for o in source_orders}
     with conn.cursor() as cur:
-        cur.execute("SELECT order_id, request_payload, predicted_delivery_duration_minutes "
-                    "FROM app.predictions WHERE run_id = %s;", (run_id,))
+        cur.execute("SELECT order_id, request_payload, predicted_delivery_duration_minutes, "
+                    "late_probability FROM app.predictions WHERE run_id = %s;", (run_id,))
         predictions = cur.fetchall()
         cur.execute("SELECT order_id, delivery_duration_minutes, observed_at_simulated "
                     "FROM app.outcomes WHERE run_id = %s;", (run_id,))
         outcomes = {o: (d, obs) for o, d, obs in cur.fetchall()}
     matched_actual, matched_pred = [], []
+    risk_actual, risk_pred = [], []
     pending, cancelled_predictions, missing_prediction = 0, 0, 0
-    for order_id, payload, predicted in predictions:
+    for order_id, payload, predicted, probability in predictions:
         if payload.get("confirmed_at") != source_by_id.get(order_id, {}).get("confirmed_at"):
             raise ValueError(f"Stored prediction for {order_id} disagrees with the source")
         if order_id in outcomes:
             matched_actual.append(outcomes[order_id][0])
             matched_pred.append(float(predicted))
+            if probability is not None:
+                risk_actual.append(1.0 if outcomes[order_id][0] > promise_minutes(source_by_id[order_id]) else 0.0)
+                risk_pred.append(float(probability))
         elif source_by_id.get(order_id, {}).get("status") == "cancelled":
             cancelled_predictions += 1
         else:
@@ -158,6 +163,11 @@ def score_run(conn, *, run_id: str, source_orders: list[dict]) -> dict:
         "observed_cancellations": sum(1 for o in source_by_id.values() if o["status"] == "cancelled"),
         "observation_cutoff": max(observed_at).isoformat() if observed_at else None,
         "metrics": compute_metrics(matched_actual, matched_pred) if matched_actual else None,
+        "risk": {"brier": round(sum((p - y) ** 2 for y, p in zip(risk_actual, risk_pred))
+                                / len(risk_actual), 4) if risk_actual else None,
+                 "scored": len(risk_actual),
+                 "missing_probability": len(matched_actual) - len(risk_actual)}
+        if matched_actual else None,
         "simulated": True,
     }
 

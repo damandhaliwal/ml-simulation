@@ -1,5 +1,17 @@
 # Handoff — September 4, 2026
 
+## September 6, 2026 — late-delivery risk served end to end
+
+`/predict` takes an optional risk artifact (`--risk-model-dir`) and serves
+`late_probability` + `risk_model_sha256` from the stored row on logged
+requests; ETA-only shape is unchanged without it. Probabilities persist via
+migration `002` (nullable; pre-risk rows excluded from scoring) with
+first-write-wins conflict comparison, and replay reports a Brier score over
+matched pairs. Risk artifact refit on all 113,079 labels at 160 trees
+(`7ed78992…`, local only). 13 tests added; 117 pass with the database, 98 run
+/ 16 skip without; residue `0|0|0`. Remaining: image refresh, monitoring,
+retraining loop, CI.
+
 ## September 6, 2026 — late-delivery risk classifier (validation only)
 
 `code/models/late_risk.py`: constant-rate and ETA-threshold baselines plus a
