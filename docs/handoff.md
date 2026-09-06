@@ -7,7 +7,8 @@ Fresh September 1–7 data, replayed live under `EVAL-SEPW1-SEED7`: 3,407 posted
 Storm stays weakest (MAE 3.789, bias -1.261). Rerun byte-identical; metrics
 independently recomputed; artifact hash unchanged; rows admin-deleted after.
 Full record in `docs/evaluation-2026-09-06.md`. No tuning against these scores.
-Cancellation policy still open.
+Decided: cancellations stay coverage-only (see `docs/prediction-logging.md`);
+delivered-only terminal replay is the closed policy, not a gap.
 
 ## September 6, 2026 — live replay through the API
 

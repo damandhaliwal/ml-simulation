@@ -59,6 +59,6 @@ PYTHONPATH=code .venv/bin/python -m replay.harness --source data/orders_2026_sep
 
 ## Next decisions
 
-Cancellation observation policy is still open, so terminal-outcome replay
+Cancellation timing is coverage-only by decision, so terminal-outcome replay
 remains delivered-only. The rest of September is untouched and available for
 later windows. See [handoff.md](handoff.md).

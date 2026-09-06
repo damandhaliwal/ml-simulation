@@ -124,10 +124,15 @@ error, never a silent overwrite.
   a retained, consistent database snapshot/export; preparation timestamps are not
   proof of commit visibility.
 - The current generator has no `cancelled_at`. Do not invent a cancellation at
-  confirmation, at the promise, or at a delivery timestamp. Before replaying
-  cancellations, agree on an explicit simulated observation policy or separately
-  approve a generator change. Until then, retain them in the source; do not claim
-  complete terminal-outcome replay or infer cancellation from a missing delivery.
+  confirmation, at the promise, or at a delivery timestamp. Retain them in the
+  source; do not claim complete terminal-outcome replay or infer cancellation
+  from a missing delivery.
+- Decided September 6, 2026: cancellations stay coverage-only. The product
+  target is delivery duration, which cancelled orders can never enter, so no
+  scored, monitored, or retrained quantity needs a cancellation timestamp.
+  Replay counts cancellations in coverage; `insert_outcome` refuses them with
+  an explicit error. Revisit only with a real consumer — late-delivery risk
+  modeling would be the trigger — not for speculative completeness.
 
 ## Joining and checking the records
 
@@ -180,5 +185,6 @@ Before claiming persistence/replay works, add focused tests for:
   no database, driver, volume, or schema migration is installed/created here.
 - Agree how run context reaches the logger without changing model features, and
   how operational attempts are recorded. No new endpoint/header is added here.
-- Resolve cancellation availability before terminal-outcome replay; choose a
-  later evaluation window separately. No evaluation dataset is generated in this step.
+- Cancellation availability is decided as coverage-only (see above); terminal
+  replay stays delivered-only. A later evaluation window has since been used
+  once (September week, seed 7). No evaluation dataset is generated in this step.
