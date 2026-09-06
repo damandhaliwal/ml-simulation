@@ -7,3 +7,5 @@
 !code/prep/*.py
 !code/serving/*.py
 !code/persistence/*.py
+!code/monitoring/*.py
+!monitoring/baseline_jan_aug.json

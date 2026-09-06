@@ -340,6 +340,9 @@ curl --fail-with-body http://127.0.0.1:8000/predict \
 
 - `GET /health`: HTTP 200 with `status: "ready"`, `model_sha256`, and `simulated`.
   This means the checked artifact is loaded, not that its accuracy is acceptable.
+- `GET /dashboard`: plain-HTML cards per logged run (matched count, MAE, bias,
+  P95, storm bias, alert flag, findings). Needs a configured database (503
+  otherwise); degrades to performance-only when the input baseline is absent.
 - `POST /predict`: HTTP 200 with the same response as the CLI. The existing example
   returns 43.63 minutes with the same model checksum. It is still synthetic.
 - Invalid/missing fields or malformed/non-object JSON: HTTP 422 with a `detail`
@@ -478,7 +481,7 @@ docker run --rm --network none eta-api:local find /app -type f
 docker run --rm --network none eta-api:local python -m pip --no-cache-dir check
 ```
 
-The application file listing should contain requirements plus fifteen Python files,
+The application file listing should contain requirements plus seventeen Python files,
 with no simulator or caches. `--no-cache-dir` avoids pip's unwritable-cache warning
 for the numeric non-root user. These inspection commands need no model mount.
 

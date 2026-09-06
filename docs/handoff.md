@@ -1,5 +1,14 @@
 # Handoff — September 4, 2026
 
+## September 6, 2026 — dashboard and monitoring suite complete
+
+`GET /dashboard` renders one card per logged run from the existing check
+functions (plain HTML, escaped, no JS); 503 without a database, skips runs
+with nothing scoreable, degrades gracefully without the baseline. Baseline
+ships in the image via an allowlisted JSON copy. 8 tests; 132 pass with the
+database, 106 run / 18 skip without; residue `0|0|0|0`. Phase C closed.
+Remaining: retraining loop, CI, demo runbook.
+
 ## September 6, 2026 — regime shift caught by monitors
 
 October replay (`MONITOR-OCT`, 14,970 orders, storm multiplier 1.8): overall

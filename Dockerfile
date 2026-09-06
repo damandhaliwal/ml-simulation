@@ -15,6 +15,7 @@ COPY requirements.txt ./
 RUN python -m pip install --no-cache-dir --only-binary=:all: -r requirements.txt
 
 COPY code/ ./code/
+COPY monitoring/baseline_jan_aug.json ./monitoring/baseline_jan_aug.json
 
 USER 10001:10001
 

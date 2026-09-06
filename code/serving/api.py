@@ -1,4 +1,5 @@
 import argparse
+import json
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -9,17 +10,20 @@ import psycopg
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from models.predict_eta import validate_request
 from models.refit_eta import load_artifact
 from models.refit_risk import load_risk_artifact
+from monitoring.checks import check_drift, check_performance, summarize_logged_run
 from persistence.db import db_config_from_env
 from persistence.predictions import PredictionConflict, insert_prediction
 from prep.dataset_validation import parse_timestamp
+from serving.dashboard import render_dashboard, run_panel
 
 RUN_ID_HEADER = "x-run-id"
 PREDICTED_AT_HEADER = "x-predicted-at"
+BASELINE_PATH = Path(__file__).resolve().parents[2] / "monitoring" / "baseline_jan_aug.json"
 
 
 def log_attempt(config, *, http_status: int, category: str, detail: str,
@@ -85,6 +89,10 @@ def create_app(artifact_dir: Path | str, risk_artifact_dir: Path | str | None = 
     app.state.artifact = None
     app.state.risk = None
     app.state.db_config = None
+    try:
+        app.state.baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        app.state.baseline = None  # Dashboard degrades to performance-only.
 
     def loaded_artifact():
         if app.state.artifact is None:
@@ -108,6 +116,32 @@ def create_app(artifact_dir: Path | str, risk_artifact_dir: Path | str | None = 
         if app.state.risk is not None:
             body["risk_model_sha256"] = app.state.risk[1]["model_sha256"]
         return body
+
+    @app.get("/dashboard", response_class=HTMLResponse)
+    def dashboard() -> str:
+        config = app.state.db_config
+        if config is None:
+            raise HTTPException(status_code=503, detail="Dashboard needs a configured database")
+        try:
+            with psycopg.connect(**config) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT run_id FROM app.runs ORDER BY run_id;")
+                    run_ids = [row[0] for row in cur.fetchall()]
+                panels = []
+                for run_id in run_ids:
+                    try:
+                        performance, perf_findings = check_performance(conn, run_id)
+                    except ValueError:
+                        continue  # Run logged nothing scoreable yet; skip, don't fail the page.
+                    baseline = app.state.baseline
+                    drift = [] if baseline is None else check_drift(
+                        baseline, summarize_logged_run(conn, run_id))
+                    panels.append(run_panel(run_id, performance, drift, perf_findings))
+        except HTTPException:
+            raise
+        except Exception as error:
+            raise HTTPException(status_code=503, detail="Dashboard store unavailable") from error
+        return render_dashboard(panels, baseline_missing=app.state.baseline is None)
 
     @app.post("/predict")
     def predict(request: Request, payload: Annotated[dict, Body(description="Same confirmation-time fields as the local CLI.")]) -> dict:
