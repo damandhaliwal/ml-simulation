@@ -478,7 +478,7 @@ docker run --rm --network none eta-api:local find /app -type f
 docker run --rm --network none eta-api:local python -m pip --no-cache-dir check
 ```
 
-The application file listing should contain requirements plus fourteen Python files,
+The application file listing should contain requirements plus fifteen Python files,
 with no simulator or caches. `--no-cache-dir` avoids pip's unwritable-cache warning
 for the numeric non-root user. These inspection commands need no model mount.
 

@@ -1,5 +1,14 @@
 # Handoff — September 4, 2026
 
+## September 6, 2026 — image refreshed with risk and logging code
+
+Rebuilt `eta-api:local` (arm64, `10001:10001`): 15 Python files plus
+requirements, `pip check` clean. ETA smoke: health ready, 43.63 prediction,
+422 on `{}`, container removed. Risk smoke (both artifacts mounted, command
+override): health carries risk hash `7ed78992…`, prediction returns
+`late_probability` 0.336. Phase B closed. Next: monitoring (regime shift,
+drift, alerts, dashboard).
+
 ## September 6, 2026 — operational attempt log
 
 Every non-200 `/predict` outcome writes one `app.attempts` row (migration
