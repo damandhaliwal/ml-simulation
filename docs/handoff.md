@@ -1,5 +1,15 @@
 # Handoff — September 4, 2026
 
+## September 6, 2026 — outcome ingestion module (delivered-only)
+
+`code/persistence/outcomes.py` stores terminal delivery outcomes: identical
+re-ingest keeps first observation/recording times, conflicting labels raise,
+impossible endings (bad timestamps, duration mismatch, wrong late flag,
+unavailable-at-observation) raise, and cancelled rows are refused until a
+cancellation observation policy is agreed. No endpoint or replay yet.
+12 persistence tests and 91 total pass with `-W error` against the local
+stack (82 run / 13 skip without DB creds); residue `0|0|0`.
+
 ## September 6, 2026 — prediction logging wired into /predict
 
 `/predict` now commits its prediction row before responding 200 when the
