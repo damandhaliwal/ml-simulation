@@ -372,10 +372,10 @@ not a throughput guarantee; load/concurrency testing has not been done.
 
 The HTTP client is **HTTPX2** because the pinned Starlette test client deprecates
 HTTPX. AnyIO is pinned to 4.14.2 because Starlette 1.6.0 imports aliases deprecated
-in 4.15; no warning suppression is used. All 85 tests pass with `-W error` when
-the local database is configured; without it 76 run with 7 clean skips (6
-persistence tests plus the API-logging class). Both modes hold in the project
-environment and in a fresh environment installed from `requirements.txt`. See
+in 4.15; no warning suppression is used. All 95 tests pass with `-W error` when
+the local database is configured; without it 82 run with 14 clean skips (12
+persistence tests plus the API-logging and replay classes). Both modes hold in the
+project environment and in a fresh environment installed from `requirements.txt`. See
 [Starlette's test-client documentation](https://www.starlette.io/testclient/).
 
 This is a localhost learning service, **not a public deployment**: no authentication,
@@ -478,9 +478,10 @@ Compose/PostgreSQL service. Detailed evidence is in [the handoff](docs/handoff.m
 ## Local PostgreSQL
 
 `compose.yaml` runs the pinned official PostgreSQL 17.11 Bookworm image with a
-named volume, health check, and host access restricted to `127.0.0.1:5432`. This
-is local infrastructure for the future logging work; no application schema,
-database driver, API connection, or prediction persistence exists yet.
+named volume, health check, and host access restricted to `127.0.0.1:5432`. It
+holds the `app` schema (`runs`, `predictions`, `outcomes`, all owned by
+`eta_admin`) behind migration `db/migrations/001_app_logging.sql. The API
+connects only as the least-privileged `eta_app` login (`INSERT`/`SELECT`).
 
 Create the ignored local environment file and replace the password placeholder
 with a real local administrator secret:
@@ -493,7 +494,8 @@ chmod 600 .env
 The host-side `POSTGRES_ADMIN_*` names make the privilege boundary explicit.
 Compose maps them to the official image's required bootstrap variables. That
 bootstrap identity is intentionally a superuser; it must never be used by the API.
-The future `eta_app` role will have a different secret and restricted privileges.
+`eta_app` has a different secret and restricted privileges (see
+`docs/db-eta-app-design.md`).
 
 Validate without printing the resolved configuration, then start the service:
 
@@ -534,5 +536,25 @@ docker compose down
 
 `docker compose down --volumes` also deletes `eta_postgres_data` and is destructive.
 Use it only for an explicitly reviewed reset. Neither command removes the image.
+
+## Live replay
+
+`code/replay/harness.py` replays a source window through the running API in
+confirmation order, then joins stored predictions to stored outcomes. Start the
+API and database first, then from the repository root with DB credentials set:
+
+```sh
+PYTHONPATH=code .venv/bin/python -m replay.harness \
+  --source data/orders_2026_jan_aug.json --run-id REPLAY-EXAMPLE \
+  --start 2026-08-04 --end 2026-08-04 --model-dir artifacts/eta_2026_jan_aug
+```
+
+Each order is POSTed with run headers (`predicted_at` equals its confirmation
+time); outcomes are ingested as simulated cutoffs pass them, with a final sweep
+for slow deliveries. The printed report gives matched/pending/cancelled counts
+plus MAE, bias, and P95 over matched delivered pairs. Rerunning the same run ID
+resumes idempotently. Replaying training-window data exercises the plumbing
+only; it is not a held-out evaluation. Cancelled orders are counted, never
+ingested — their observation timing is still undecided.
 
 The broader roadmap and working agreement remain in [AGENTS.md](AGENTS.md).

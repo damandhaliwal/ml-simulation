@@ -1,5 +1,16 @@
 # Handoff — September 4, 2026
 
+## September 6, 2026 — live replay through the API
+
+`code/replay/harness.py` posts every order in confirmation order with run
+headers, ingests delivered outcomes as cutoffs pass them, and scores matched
+pairs with the shared metric helper. Cancellations are counted, never ingested.
+First live run: August 4 slice, 480 orders → 480 predictions, 470 matched,
+10 cancelled, 0 pending, MAE 2.978 / bias -0.503 / P95 7.650. That window is
+training data, so this is a plumbing check, not a held-out result; the slice
+run was admin-deleted afterwards. 4 replay tests plus 95 total pass with
+`-W error` (82 run / 14 skip without DB creds); residue `0|0|0`.
+
 ## September 6, 2026 — outcome ingestion module (delivered-only)
 
 `code/persistence/outcomes.py` stores terminal delivery outcomes: identical
