@@ -1,0 +1,56 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements.txt
+      - run: PYTHONPATH=code python -W error -m unittest discover -s tests -q
+
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.11-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0
+        env:
+          POSTGRES_DB: eta
+          POSTGRES_USER: eta_admin
+          POSTGRES_PASSWORD: ci-admin-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U eta_admin -d eta"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      POSTGRES_DB: eta
+      POSTGRES_APP_USER: eta_app
+      POSTGRES_APP_PASSWORD: ci-app-password
+      POSTGRES_ADMIN_USER: eta_admin
+      POSTGRES_ADMIN_PASSWORD: ci-admin-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements.txt
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+      - run: |
+          PGPASSWORD=ci-admin-password psql --host localhost --username eta_admin \
+            --dbname eta --no-psqlrc --tuples-only --set ON_ERROR_STOP=1 \
+            --command "CREATE ROLE eta_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE CONNECTION LIMIT 5 PASSWORD 'ci-app-password';"
+          for migration in db/migrations/001_app_logging.sql db/migrations/002_risk_logging.sql db/migrations/003_attempts.sql; do
+            PGPASSWORD=ci-admin-password psql --host localhost --username eta_admin \
+              --dbname eta --no-psqlrc --set ON_ERROR_STOP=1 --file "$migration"
+          done
+      - run: PYTHONPATH=code python -W error -m unittest discover -s tests -q 2>&1 | tee /tmp/suite.log | tail -n 4
+      - run: "! grep -q skipped /tmp/suite.log"

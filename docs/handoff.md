@@ -1,5 +1,14 @@
 # Handoff — September 4, 2026
 
+## September 6, 2026 — CI and demo runbook close the roadmap
+
+`.github/workflows/ci.yml`: unit suite without a database plus the full suite
+against a Postgres 17 service (pinned digest, migrations applied, dummy
+credentials), failing on any skip in the integration job. `docs/demo.md` is
+the 10-minute production story with runnable commands. Roadmap complete
+through retraining loop and CI; the system is now a self-contained portfolio
+piece for production ML.
+
 ## September 6, 2026 — challenger bout: rejected, rollback drilled
 
 Challenger (Jan–Aug + Sept W1, 116,390 rows) vs production on untouched Sept
