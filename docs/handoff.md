@@ -1,5 +1,14 @@
 # Handoff — September 4, 2026
 
+## September 6, 2026 — late-delivery risk classifier (validation only)
+
+`code/models/late_risk.py`: constant-rate and ETA-threshold baselines plus a
+LightGBM binary classifier on the frozen 13 features and label-aware splits.
+Validation log-loss 0.2557 / Brier 0.0786 / AUC 0.9425 vs threshold 0.3678 and
+constant 0.5694; 160 trees selected, test untouched. 9 new tests; 104 pass
+with the database, 91 run / 14 skip without. Serving, replay, and the test
+set are unchanged — wiring the probability into `/predict` is the next step.
+
 ## September 6, 2026 — first held-out score (September week, seed 7)
 
 Fresh September 1–7 data, replayed live under `EVAL-SEPW1-SEED7`: 3,407 posted,
