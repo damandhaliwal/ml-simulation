@@ -1,5 +1,14 @@
 # Handoff — September 4, 2026
 
+## September 6, 2026 — regime shift caught by monitors
+
+October replay (`MONITOR-OCT`, 14,970 orders, storm multiplier 1.8): overall
+MAE 3.321, storm bias -4.646 (was -1.261) → performance alert fires, overall
+MAE gate correctly quiet. Input drift also fired on `weather_type`
+(L1 0.1156) — but from October having no snow, a benign seasonal absence, not
+the regime change. Lesson recorded: drift findings need triage against the
+performance panel, not blind trust. Rows admin-deleted after; residue `0|0|0|0`.
+
 ## September 6, 2026 — image refreshed with risk and logging code
 
 Rebuilt `eta-api:local` (arm64, `10001:10001`): 15 Python files plus
