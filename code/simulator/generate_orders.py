@@ -23,7 +23,7 @@ def generate_order(
     item_count: int | None = None, prep_time_multiplier: float = 1,
     promise_minutes: float = 45, cancellation_probability: float = 0.03,
     batch_probability: float = 0.2, max_orders_per_run: int = 2,
-    batch_max_gap_km: float = 1,
+    batch_max_gap_km: float = 1, weather_multipliers: dict[str, float] | None = None,
 ) -> dict:
     """Sample one complete synthetic row. No state, queues, or event processing."""
     if not isinstance(confirmed_at, datetime) or confirmed_at.utcoffset() is None:
@@ -55,6 +55,14 @@ def generate_order(
     for name in (holiday_name, special_event):
         if name is not None and (not isinstance(name, str) or not name):
             raise ValueError("holiday/event names must be nonempty strings")
+    multipliers = dict(WEATHER)
+    if weather_multipliers is not None:
+        if (not isinstance(weather_multipliers, dict)
+                or any(w not in WEATHER for w in weather_multipliers)
+                or any(not isinstance(m, (int, float)) or isinstance(m, bool)
+                       or not isfinite(m) or m <= 0 for m in weather_multipliers.values())):
+            raise ValueError("weather_multipliers must map known weather types to positive finite numbers")
+        multipliers.update({w: (WEATHER[w][0], m) for w, m in weather_multipliers.items()})
 
     confirmed_at = confirmed_at.astimezone(timezone.utc)
     local = confirmed_at.astimezone(MARKET_TIMEZONE)
@@ -112,7 +120,7 @@ def generate_order(
     )
     preparation = (12 + 2 * items + 1.5 * backlog) * prep_time_multiplier
     supply_delay = 2 * waiting / (idle + 1)
-    travel = 4 * (distance + detour_km) * traffic * (WEATHER[weather][1] + 0.01 * rain)
+    travel = 4 * (distance + detour_km) * traffic * (multipliers[weather][1] + 0.01 * rain)
     duration = round(max(5, preparation + supply_delay + travel
                          + 2 * (1 + extra_orders) + rng.gauss(0, 3)), 2)
     cancelled = rng.random() < cancellation_probability
@@ -175,8 +183,11 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--orders-per-hour", type=float, default=20)
+    parser.add_argument("--weather-multipliers", type=json.loads, default=None,
+                        help='Regime override as JSON, e.g. \'{"storm": 1.8}\'.')
     args = parser.parse_args()
-    orders = generate_orders(args.start, args.end, args.seed, orders_per_hour=args.orders_per_hour)
+    orders = generate_orders(args.start, args.end, args.seed, orders_per_hour=args.orders_per_hour,
+                             weather_multipliers=args.weather_multipliers)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w", encoding="utf-8") as file:
         json.dump(orders, file, indent=2)

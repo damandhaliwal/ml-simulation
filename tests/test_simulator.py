@@ -131,12 +131,33 @@ class TestGenerateOrder(unittest.TestCase):
             {"batch_max_gap_km": -1}, {"max_orders_per_run": 0}, {"promise_minutes": 0},
             {"zones": ("Z1", "Z1")}, {"order_id": ""}, {"holiday_name": ""},
             {"holidays": {"2026-01-01": "wrong date type"}},
+            {"weather_multipliers": {"hail": 2.0}}, {"weather_multipliers": {"storm": 0}},
+            {"weather_multipliers": {"storm": float("nan")}},
+            {"weather_multipliers": {"storm": True}}, {"weather_multipliers": [("storm", 1.8)]},
         ]
         for options in bad_options:
             with self.subTest(options=options), self.assertRaises(ValueError):
                 generate_order(AT, **options)
         with self.assertRaises(ValueError):
             generate_order(AT.replace(tzinfo=None))
+
+    def test_weather_multiplier_override_touches_only_that_weather(self):
+        at = datetime(2026, 1, 15, 12, tzinfo=timezone.utc)
+        storm = generate_order(at, order_id="W-STORM", seed=5, weather_type="storm")
+        storm_shifted = generate_order(at, order_id="W-STORM", seed=5, weather_type="storm",
+                                       weather_multipliers={"storm": 1.8})
+        self.assertGreater(storm_shifted["delivery_duration_minutes"],
+                           storm["delivery_duration_minutes"])
+        clear = generate_order(at, order_id="W-CLEAR", seed=5, weather_type="clear",
+                               precipitation_mm_per_hour=0)
+        clear_shifted = generate_order(at, order_id="W-CLEAR", seed=5, weather_type="clear",
+                                       precipitation_mm_per_hour=0,
+                                       weather_multipliers={"storm": 1.8})
+        self.assertEqual(clear_shifted, clear)
+        default = generate_order(at, order_id="W-DEF", seed=5,
+                                 weather_multipliers={"storm": 1.5, "rain": 1.15,
+                                                      "snow": 1.35, "clear": 1.0})
+        self.assertEqual(default, generate_order(at, order_id="W-DEF", seed=5))
 
 
 class TestGenerateOrders(unittest.TestCase):
