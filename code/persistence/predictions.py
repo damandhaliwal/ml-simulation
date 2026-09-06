@@ -99,13 +99,15 @@ def insert_prediction(
     predicted_at_simulated: datetime,
     model_latency_ms: float,
     recorded_at_wall: datetime | None = None,
+    late_probability: float | None = None,
     simulated: bool = True,
 ) -> dict[str, Any]:
     """Insert one logical prediction; an identical retry returns the stored row.
 
     Attempt-specific timing (recorded_at_wall, model_latency_ms) is kept from
     the first write, never overwritten. A different payload, features, model,
-    or predicted value under the same key is a ValueError. Constraint
+    predicted value, or risk probability under the same key is a ValueError.
+    A None probability marks a pre-risk row and matches only None. Constraint
     violations (unknown run, floored duration) propagate as database errors
     instead of a fake successful row. No commit; the caller commits first.
     """
@@ -123,17 +125,24 @@ def insert_prediction(
     _require_aware(predicted_at_simulated, "predicted_at_simulated")
     if recorded_at_wall is not None:
         _require_aware(recorded_at_wall, "recorded_at_wall")
+    if late_probability is not None and (
+            not isinstance(late_probability, (int, float))
+            or isinstance(late_probability, bool)
+            or not 0.0 <= late_probability <= 1.0):
+        raise ValueError("late_probability must be None or a number in [0, 1]")
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """INSERT INTO app.predictions
                (run_id, order_id, request_payload, features,
                 predicted_delivery_duration_minutes, model_sha256,
-                predicted_at_simulated, recorded_at_wall, model_latency_ms, simulated)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, COALESCE(%s, now()), %s, %s)
+                predicted_at_simulated, recorded_at_wall, model_latency_ms,
+                late_probability, simulated)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, COALESCE(%s, now()), %s, %s, %s)
                ON CONFLICT (run_id, order_id) DO NOTHING RETURNING *;""",
             (run_id, order_id, Json(request_payload), Json(features),
              predicted_delivery_duration_minutes, model_sha256,
-             predicted_at_simulated, recorded_at_wall, model_latency_ms, simulated),
+             predicted_at_simulated, recorded_at_wall, model_latency_ms,
+             late_probability, simulated),
         )
         row = cur.fetchone()
         if row is not None:
@@ -143,10 +152,15 @@ def insert_prediction(
             (run_id, order_id),
         )
         existing = cur.fetchone()
+        stored_probability = existing["late_probability"]
+        probabilities_match = (stored_probability is None and late_probability is None) or (
+            stored_probability is not None and late_probability is not None
+            and float(stored_probability) == float(late_probability))
         if (existing["request_payload"] != request_payload
                 or existing["features"] != features
                 or existing["model_sha256"] != model_sha256
                 or float(existing["predicted_delivery_duration_minutes"])
-                != float(predicted_delivery_duration_minutes)):
+                != float(predicted_delivery_duration_minutes)
+                or not probabilities_match):
             raise PredictionConflict(f"Conflicting prediction for {(run_id, order_id)!r}")
         return existing

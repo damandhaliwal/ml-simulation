@@ -94,6 +94,23 @@ class TestPredictionLogging(unittest.TestCase):
         self.assertEqual(retry["recorded_at_wall"], first["recorded_at_wall"])
         self.assertEqual(retry["model_latency_ms"], 1.5)
 
+    def test_risk_probability_joins_first_write_wins(self):
+        def args(order_id, **overrides):
+            return prediction_args(order_id=order_id,
+                                   request_payload={**PAYLOAD, "order_id": order_id},
+                                   **overrides)
+        first = insert_prediction(self.conn, **args("R1", late_probability=0.2))
+        retry = insert_prediction(self.conn, **args("R1", late_probability=0.2))
+        self.assertEqual(retry["late_probability"], first["late_probability"])
+        self.assertEqual(self.count("predictions"), 1)
+        with self.assertRaisesRegex(ValueError, "Conflicting prediction"):
+            insert_prediction(self.conn, **args("R1", late_probability=0.8))
+        with self.assertRaisesRegex(ValueError, "Conflicting prediction"):
+            insert_prediction(self.conn, **args("R1"))
+        with self.assertRaisesRegex(ValueError, r"late_probability must be None or"):
+            insert_prediction(self.conn, **args("R2", late_probability=1.5))
+        self.assertEqual(self.count("predictions"), 1)
+
     def test_conflicting_predictions_are_errors(self):
         insert_prediction(self.conn, **prediction_args())
         conflicts = {
