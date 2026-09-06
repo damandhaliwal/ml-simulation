@@ -18,6 +18,10 @@ RUN_COMPARE_FIELDS = (
 )
 
 
+class PredictionConflict(ValueError):
+    """Same key, different content: retry was not identical. Never overwrite."""
+
+
 def _require_id(value: str, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must be a nonempty string")
@@ -79,7 +83,7 @@ def insert_run(
         existing = cur.fetchone()
         # The row must exist: nobody holds DELETE and we just attempted it.
         if {k: existing[k] for k in RUN_COMPARE_FIELDS} != supplied:
-            raise ValueError(f"Conflicting run manifest for run_id {run_id!r}")
+            raise PredictionConflict(f"Conflicting run manifest for run_id {run_id!r}")
         return existing
 
 
@@ -144,5 +148,5 @@ def insert_prediction(
                 or existing["model_sha256"] != model_sha256
                 or float(existing["predicted_delivery_duration_minutes"])
                 != float(predicted_delivery_duration_minutes)):
-            raise ValueError(f"Conflicting prediction for {(run_id, order_id)!r}")
+            raise PredictionConflict(f"Conflicting prediction for {(run_id, order_id)!r}")
         return existing

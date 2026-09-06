@@ -6,3 +6,4 @@
 !code/models/*.py
 !code/prep/*.py
 !code/serving/*.py
+!code/persistence/*.py

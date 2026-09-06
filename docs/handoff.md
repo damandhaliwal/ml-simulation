@@ -1,5 +1,33 @@
 # Handoff — September 4, 2026
 
+## September 6, 2026 — prediction logging wired into /predict
+
+`/predict` now commits its prediction row before responding 200 when the
+caller sends `X-Run-Id` + `X-Predicted-At` together; responses are built from
+the stored row, so identical retries return identical JSON with one stored row.
+
+- `code/persistence/db.py`: env-only config (`POSTGRES_DB/APP_USER/APP_PASSWORD`,
+  optional `PGHOST`/`PGPORT`); absent trio means unlogged, partial trio is a
+  startup `RuntimeError`, configured-but-unreachable store also fails startup.
+  No secrets in code or logs. `PredictionConflict(ValueError)` marks
+  same-key-different-content retries, mapped to HTTP 409; unknown run_id maps
+  to 422 via the foreign key; store errors map to 503; unconfigured store with
+  run headers maps to 503. Headerless requests behave exactly as before.
+- `.dockerignore` gains `!code/persistence/*.py`; without it the image would
+  miss the new import. The image itself was not rebuilt here; that stays a
+  separately approved Docker step.
+- Tests: 85 pass with `-W error` against the local stack (76 run / 7 skip
+  without DB creds). New `tests/test_api_logging.py` covers logged/unlogged,
+  retry-identical, 409-conflict, half/naive headers, unknown run, 503 paths,
+  and startup failure. Residue `0|0|0` across runs/predictions/outcomes.
+- Deliberate deviation: the API stays usable without a database (unlogged),
+  instead of refusing all startup — banning unlogged local predictions would
+  have forced the whole suite onto the database. Fail-fast applies where the
+  durability promise lives: configured-but-unreachable fails at startup, and
+  run headers without a store fail per request with 503.
+- Next: outcome ingestion, then replay through the API; cancellation
+  observation policy still unresolved per `docs/prediction-logging.md`.
+
 ## September 5, 2026 — eta_app role and migration 001 applied
 
 Daman created the least-privileged login and the first migration was applied;

@@ -350,6 +350,19 @@ curl --fail-with-body http://127.0.0.1:8000/predict \
 - Unexpected inference errors remain server errors (HTTP 500), not misleading
   input-validation errors. Wrong methods return 405; unknown routes return 404.
 
+Optional prediction logging: send `X-Run-Id` and `X-Predicted-At`
+(timezone-aware ISO timestamp) together. The run must already be registered
+(see `code/persistence/predictions.py:insert_run`); the prediction row is
+committed before the 200 response, and the response is built from the stored
+row, so an identical retry returns byte-identical JSON with one stored row.
+A different payload/model/value under the same key returns 409; an unknown
+run returns 422; half-supplied or naive-timestamp headers return 422. Logging
+needs `POSTGRES_DB`, `POSTGRES_APP_USER`, and `POSTGRES_APP_PASSWORD` in the
+environment (`PGHOST` defaults to 127.0.0.1, `PGPORT` to 5432); a configured
+but unreachable store fails startup, and run headers with no database return
+503. Requests without the headers predict exactly as before and store nothing.
+The API connects as the least-privileged `eta_app` login, never the admin.
+
 `create_app(artifact_dir)` builds the app without loading anything. Its startup
 context loads and retains the model/metadata, and clears the reference on shutdown.
 The two routes use that in-memory snapshot. If model files change on disk, restart
@@ -359,15 +372,17 @@ not a throughput guarantee; load/concurrency testing has not been done.
 
 The HTTP client is **HTTPX2** because the pinned Starlette test client deprecates
 HTTPX. AnyIO is pinned to 4.14.2 because Starlette 1.6.0 imports aliases deprecated
-in 4.15; no warning suppression is used. All 70 tests pass with `-W error` in both
-the project environment and a fresh environment installed from `requirements.txt`. See
+in 4.15; no warning suppression is used. All 85 tests pass with `-W error` when
+the local database is configured; without it 76 run with 7 clean skips (6
+persistence tests plus the API-logging class). Both modes hold in the project
+environment and in a fresh environment installed from `requirements.txt`. See
 [Starlette's test-client documentation](https://www.starlette.io/testclient/).
 
 This is a localhost learning service, **not a public deployment**: no authentication,
-TLS, rate limiting, persistent prediction logging, database integration, or
-delayed-outcome processing yet. A separate local PostgreSQL service now exists,
-but the API does not connect to it. Uvicorn's ordinary request/error logs are not
-model-monitoring records. Cloud deployment still requires explicit approval.
+TLS, rate limiting, outcome ingestion, or delayed-outcome processing yet. Prediction
+rows are written through the least-privileged login above; Uvicorn's ordinary
+request/error logs are not model-monitoring records. Cloud deployment still
+requires explicit approval.
 
 ## Local Docker API
 
@@ -378,7 +393,8 @@ artifact's strict runtime checks; this is a local compatibility baseline, not
 a claim of production security hardening.
 
 `.dockerignore` excludes everything except the packaging files, requirements,
-and Python files directly inside `code/models`, `code/prep`, and `code/serving`.
+and Python files directly inside `code/models`, `code/prep`, `code/serving`,
+and `code/persistence`.
 Only requirements and those Python files are copied into the image. Agent
 instructions, docs, simulator, tests, caches, Git history, environment files, datasets, and
 model artifacts are excluded. Do not add directory-only exceptions such as
@@ -448,7 +464,7 @@ docker run --rm --network none eta-api:local find /app -type f
 docker run --rm --network none eta-api:local python -m pip --no-cache-dir check
 ```
 
-The application file listing should contain requirements plus nine Python files,
+The application file listing should contain requirements plus twelve Python files,
 with no simulator or caches. `--no-cache-dir` avoids pip's unwritable-cache warning
 for the numeric non-root user. These inspection commands need no model mount.
 
