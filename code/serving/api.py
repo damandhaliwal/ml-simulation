@@ -1,5 +1,6 @@
 import argparse
 import time
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
@@ -19,6 +20,32 @@ from prep.dataset_validation import parse_timestamp
 
 RUN_ID_HEADER = "x-run-id"
 PREDICTED_AT_HEADER = "x-predicted-at"
+
+
+def log_attempt(config, *, http_status: int, category: str, detail: str,
+                latency_ms: float, run_id: str | None = None,
+                order_id: str | None = None) -> None:
+    """Best-effort operational record for a non-200 outcome on /predict.
+
+    Only our own error message is stored, never the request body. A failing
+    attempt write is swallowed on purpose: this log must never mask the
+    response it describes. Callers pass the run/order correlation only when
+    it parsed cleanly.
+    """
+    if config is None:
+        return
+    try:
+        with psycopg.connect(**config) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO app.attempts
+                       (attempt_id, run_id, order_id, http_status, category, detail,
+                        attempt_latency_ms)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s);""",
+                    (uuid.uuid4().hex, run_id, order_id, http_status, category,
+                     detail, latency_ms))
+    except Exception:
+        pass
 
 
 def create_app(artifact_dir: Path | str, risk_artifact_dir: Path | str | None = None) -> FastAPI:
@@ -67,6 +94,10 @@ def create_app(artifact_dir: Path | str, risk_artifact_dir: Path | str | None = 
     @app.exception_handler(RequestValidationError)
     async def invalid_body(request: Request, error: RequestValidationError):
         # Do not echo arbitrary input, including NaN values that cannot be JSON responses.
+        # The route never started, so this attempt carries a zero latency scope.
+        log_attempt(request.app.state.db_config, http_status=422, category="invalid_request",
+                    detail="Body must be a valid JSON object", latency_ms=0.0,
+                    run_id=request.headers.get(RUN_ID_HEADER) or None)
         return JSONResponse(status_code=422, content={"detail": "Body must be a valid JSON object"})
 
     @app.get("/health")
@@ -80,22 +111,37 @@ def create_app(artifact_dir: Path | str, risk_artifact_dir: Path | str | None = 
 
     @app.post("/predict")
     def predict(request: Request, payload: Annotated[dict, Body(description="Same confirmation-time fields as the local CLI.")]) -> dict:
+        entered = time.perf_counter()
+        config = request.app.state.db_config
+        headers_run_id = request.headers.get(RUN_ID_HEADER) or None
+        predicted_at_raw = request.headers.get(PREDICTED_AT_HEADER) or None
+        order_id = payload.get("order_id") if isinstance(payload, dict) else None
+        if not isinstance(order_id, str) or not order_id:
+            order_id = None
+
+        def fail(http_status: int, category: str, detail: str) -> None:
+            log_attempt(config, http_status=http_status, category=category, detail=detail,
+                        latency_ms=(time.perf_counter() - entered) * 1000,
+                        run_id=headers_run_id, order_id=order_id)
+            raise HTTPException(status_code=http_status, detail=detail)
+
         model, metadata = loaded_artifact()
         risk = request.app.state.risk
         try:
             features = validate_request(payload)
         except ValueError as error:
-            raise HTTPException(status_code=422, detail=str(error)) from error
+            fail(422, "invalid_request", str(error))
         # Run context travels in headers so the body stays model features only.
-        run_id = request.headers.get(RUN_ID_HEADER) or None
-        predicted_at_raw = request.headers.get(PREDICTED_AT_HEADER) or None
-        if (run_id is None) != (predicted_at_raw is None):
-            raise HTTPException(status_code=422,
-                                detail="X-Run-Id and X-Predicted-At must be sent together")
+        if (headers_run_id is None) != (predicted_at_raw is None):
+            fail(422, "invalid_request", "X-Run-Id and X-Predicted-At must be sent together")
+        run_id = headers_run_id
         # A synchronous route keeps CPU-bound model prediction off the async event loop.
         start = time.perf_counter()
-        duration = model.predict([features])[0]
-        probability = risk[0].predict([features])[0] if risk is not None else None
+        try:
+            duration = model.predict([features])[0]
+            probability = risk[0].predict([features])[0] if risk is not None else None
+        except Exception:
+            fail(500, "internal_error", "Model inference failed")
         latency_ms = (time.perf_counter() - start) * 1000
         if run_id is None:
             body = {"order_id": payload["order_id"], "predicted_delivery_duration_minutes": duration,
@@ -106,13 +152,10 @@ def create_app(artifact_dir: Path | str, risk_artifact_dir: Path | str | None = 
             return body
         try:
             predicted_at = parse_timestamp(predicted_at_raw)
-        except ValueError as error:
-            raise HTTPException(status_code=422,
-                                detail="X-Predicted-At must be a timezone-aware ISO timestamp") from error
-        config = request.app.state.db_config
+        except ValueError:
+            fail(422, "invalid_request", "X-Predicted-At must be a timezone-aware ISO timestamp")
         if config is None:
-            raise HTTPException(status_code=503,
-                                detail="Prediction logging requested but no database is configured")
+            fail(503, "store_unavailable", "Prediction logging requested but no database is configured")
         try:
             # The context manager commits before we respond; a lost response
             # is then safe to retry. Failures roll back instead.
@@ -125,12 +168,13 @@ def create_app(artifact_dir: Path | str, risk_artifact_dir: Path | str | None = 
                     predicted_at_simulated=predicted_at, model_latency_ms=latency_ms,
                     late_probability=probability)
         except PredictionConflict as error:
-            raise HTTPException(status_code=409, detail=str(error)) from error
+            fail(409, "conflict", str(error))
         except psycopg.errors.ForeignKeyViolation as error:
-            raise HTTPException(status_code=422,
-                                detail=f"Unknown run_id {run_id!r}; register the run first") from error
-        except psycopg.OperationalError as error:
-            raise HTTPException(status_code=503, detail="Prediction store unavailable") from error
+            fail(422, "invalid_request", f"Unknown run_id {run_id!r}; register the run first")
+        except psycopg.OperationalError:
+            fail(503, "store_unavailable", "Prediction store unavailable")
+        except psycopg.Error:
+            fail(500, "internal_error", "Prediction store write failed")
         # Respond from the stored row so retries return the identical prediction.
         # Conflict comparison already proved stored equals fresh, except for
         # legacy NULL rows, which fall back to the fresh probability.

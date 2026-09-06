@@ -80,6 +80,7 @@ class TestAPIRisk(unittest.TestCase):
     def delete_scratch_rows(cls):
         with psycopg.connect(**db_kwargs("POSTGRES_ADMIN_USER", "POSTGRES_ADMIN_PASSWORD")) as conn:
             with conn.cursor() as cur:
+                cur.execute("DELETE FROM app.attempts WHERE run_id = %s;", (RUN,))
                 cur.execute("DELETE FROM app.predictions WHERE run_id = %s;", (RUN,))
                 cur.execute("DELETE FROM app.runs WHERE run_id = %s;", (RUN,))
         with psycopg.connect(**db_kwargs("POSTGRES_APP_USER", "POSTGRES_APP_PASSWORD")) as conn:

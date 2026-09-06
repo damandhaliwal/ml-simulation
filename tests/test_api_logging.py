@@ -79,13 +79,22 @@ class TestAPILogging(unittest.TestCase):
 
     @classmethod
     def delete_scratch_rows(cls):
+        # LOG-% order IDs belong to this file alone; the headerless sub-case
+        # leaves NULL-run attempts that no run-scoped delete can see.
         with psycopg.connect(**admin_kwargs()) as conn:
             with conn.cursor() as cur:
-                cur.execute("DELETE FROM app.predictions WHERE run_id = %s;", (RUN,))
+                for run_id in (RUN, "TEST-NOPE"):
+                    cur.execute("DELETE FROM app.attempts WHERE run_id = %s;", (run_id,))
+                    cur.execute("DELETE FROM app.predictions WHERE run_id = %s;", (run_id,))
                 cur.execute("DELETE FROM app.runs WHERE run_id = %s;", (RUN,))
+                cur.execute("DELETE FROM app.attempts WHERE run_id IS NULL AND order_id LIKE 'LOG-%%';")
         with psycopg.connect(**app_kwargs()) as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT count(*) FROM app.predictions WHERE run_id = %s;", (RUN,))
+                cur.execute("SELECT (SELECT count(*) FROM app.predictions WHERE run_id = ANY(%s)) + "
+                            "(SELECT count(*) FROM app.attempts WHERE run_id = ANY(%s)) + "
+                            "(SELECT count(*) FROM app.attempts WHERE run_id IS NULL "
+                            "AND order_id LIKE 'LOG-%%');",
+                            ([RUN, "TEST-NOPE"], [RUN, "TEST-NOPE"]))
                 leftovers = cur.fetchone()[0]
         if leftovers:
             raise AssertionError(f"{leftovers} scratch prediction rows were not cleaned up")

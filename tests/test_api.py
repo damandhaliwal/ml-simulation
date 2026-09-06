@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 import tempfile
 import unittest
@@ -6,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
+import psycopg
 from fastapi.testclient import TestClient
 
 from models.predict_eta import REQUEST_FIELDS, predict_eta
@@ -29,6 +31,33 @@ class TestETAAPI(unittest.TestCase):
         data = cls.directory / "training.json"
         data.write_text(json.dumps(cls.orders), encoding="utf-8")
         cls.metadata = refit_eta(data, cls.artifact, observed_at=datetime(2026, 9, 3, tzinfo=timezone.utc))
+        cls.addClassCleanup(cls.delete_null_run_attempts)
+
+    @classmethod
+    def delete_null_run_attempts(cls):
+        # Failure tests post without run headers, so their attempt rows carry
+        # a NULL run_id. No other suite writes NULL-run attempts. Without DB
+        # credentials there is nothing to clean and nothing is asserted.
+        required = ("POSTGRES_DB", "POSTGRES_ADMIN_USER", "POSTGRES_ADMIN_PASSWORD")
+        if any(k not in os.environ for k in required):
+            return
+        with psycopg.connect(host=os.environ.get("PGHOST", "127.0.0.1"),
+                             port=int(os.environ.get("PGPORT", "5432")),
+                             dbname=os.environ["POSTGRES_DB"],
+                             user=os.environ["POSTGRES_ADMIN_USER"],
+                             password=os.environ["POSTGRES_ADMIN_PASSWORD"]) as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM app.attempts WHERE run_id IS NULL;")
+        with psycopg.connect(host=os.environ.get("PGHOST", "127.0.0.1"),
+                             port=int(os.environ.get("PGPORT", "5432")),
+                             dbname=os.environ["POSTGRES_DB"],
+                             user=os.environ["POSTGRES_APP_USER"],
+                             password=os.environ["POSTGRES_APP_PASSWORD"]) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT count(*) FROM app.attempts WHERE run_id IS NULL;")
+                leftovers = cur.fetchone()[0]
+        if leftovers:
+            raise AssertionError(f"{leftovers} NULL-run attempt rows were not cleaned up")
 
     def setUp(self):
         self.request = json.loads(EXAMPLE.read_text(encoding="utf-8"))

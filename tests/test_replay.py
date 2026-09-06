@@ -85,7 +85,7 @@ class TestReplay(unittest.TestCase):
     def delete_one_run(cls, run_id):
         with psycopg.connect(**db_kwargs("POSTGRES_ADMIN_USER", "POSTGRES_ADMIN_PASSWORD")) as conn:
             with conn.cursor() as cur:
-                for table in ("predictions", "outcomes", "runs"):
+                for table in ("attempts", "predictions", "outcomes", "runs"):
                     cur.execute(f"DELETE FROM app.{table} WHERE run_id = %s;", (run_id,))
 
     @classmethod

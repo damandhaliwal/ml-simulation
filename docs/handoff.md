@@ -1,5 +1,14 @@
 # Handoff — September 4, 2026
 
+## September 6, 2026 — operational attempt log
+
+Every non-200 `/predict` outcome writes one `app.attempts` row (migration
+`003`: status, category, our message, parseable correlation — never the body).
+A failing attempt write is swallowed rather than masking its response, proven
+by test. Failure-test cleanups extended (NULL-run rows, `TEST-NOPE`, `LOG-%`
+prefix); residue `0|0|0|0`. 5 new tests; 122 pass with the database, 98 run /
+17 skip without. Remaining: image refresh, monitoring, retraining loop, CI.
+
 ## September 6, 2026 — late-delivery risk served end to end
 
 `/predict` takes an optional risk artifact (`--risk-model-dir`) and serves

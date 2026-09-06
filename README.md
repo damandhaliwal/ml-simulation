@@ -363,6 +363,11 @@ but unreachable store fails startup, and run headers with no database return
 503. Requests without the headers predict exactly as before and store nothing.
 The API connects as the least-privileged `eta_app` login, never the admin.
 
+Every non-200 outcome on `/predict` also writes one row to `app.attempts`
+(migration `003`): status, category, our error message, and run/order
+correlation when parseable — never the request body. A failing attempt write
+is swallowed rather than masking the response it describes.
+
 Optional late-delivery risk: start the server with `--risk-model-dir` pointing
 at a trusted risk artifact (see `code/models/refit_risk.py`), and responses
 gain `late_probability` plus `risk_model_sha256` — served from the stored row
@@ -380,10 +385,10 @@ not a throughput guarantee; load/concurrency testing has not been done.
 
 The HTTP client is **HTTPX2** because the pinned Starlette test client deprecates
 HTTPX. AnyIO is pinned to 4.14.2 because Starlette 1.6.0 imports aliases deprecated
-in 4.15; no warning suppression is used. All 117 tests pass with `-W error` when
-the local database is configured; without it 98 run with 16 clean skips (13
-persistence tests plus the API-logging, API-risk, and replay classes). Both modes
-hold in the project environment and in a fresh environment installed from
+in 4.15; no warning suppression is used. All 122 tests pass with `-W error` when
+the local database is configured; without it 98 run with 17 clean skips (13
+persistence tests plus the API-logging, API-risk, API-attempt, and replay classes).
+Both modes hold in the project environment and in a fresh environment installed from
 `requirements.txt`. See
 [Starlette's test-client documentation](https://www.starlette.io/testclient/).
 
@@ -488,10 +493,9 @@ Compose/PostgreSQL service. Detailed evidence is in [the handoff](docs/handoff.m
 
 `compose.yaml` runs the pinned official PostgreSQL 17.11 Bookworm image with a
 named volume, health check, and host access restricted to `127.0.0.1:5432`. It
-holds the `app` schema (`runs`, `predictions`, `outcomes`, all owned by
-`eta_admin`) behind migrations `db/migrations/001_app_logging.sql` and
-`db/migrations/002_risk_logging.sql` (the latter adds nullable
-`late_probability`). The API connects only as the least-privileged `eta_app`
+holds the `app` schema (`runs`, `predictions`, `outcomes`, `attempts`, all owned by
+`eta_admin`) behind migrations `001_app_logging`, `002_risk_logging`, and
+`003_attempts`. The API connects only as the least-privileged `eta_app`
 login (`INSERT`/`SELECT`).
 
 Create the ignored local environment file and replace the password placeholder
