@@ -17,6 +17,10 @@ A self-contained, $0-cost reference system for production-style ML on a syntheti
 
 No cloud resources, no paid services, no real customer data. Everything runs on your machine.
 
+## Why this project exists
+
+I built this to show I can take ML to production, not just train models in notebooks. A consistent piece of feedback from recruiters was to demonstrate deployment and operations — serving, logging, monitoring, retraining, and rollback — so this project answers that directly with a complete, runnable system.
+
 ## Key capabilities
 
 - **Inspectable synthetic generator** — three zones, weather, traffic, calendar effects, cancellations, and nearby multi-order batching via an explicit formula. See `docs/order-schema.md`.
